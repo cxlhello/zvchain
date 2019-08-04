@@ -263,7 +263,7 @@ func (gtas *Gtas) simpleInit(configPath string) {
 }
 
 func (gtas *Gtas) checkAddress(keystore, address, password string) error {
-	aop, err := initAccountManager(keystore, true)
+	aop, err := InitAccountManager(keystore, true)
 	if err != nil {
 		return err
 	}

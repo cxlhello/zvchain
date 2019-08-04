@@ -32,12 +32,12 @@ type RemoteChainOpImpl struct {
 	host string
 	port int
 	base string
-	aop  accountOp
+	aop  AccountOp
 	show bool
 }
 
 // InitRemoteChainOp connect node by ip and port
-func InitRemoteChainOp(ip string, port int, show bool, op accountOp) *RemoteChainOpImpl {
+func InitRemoteChainOp(ip string, port int, show bool, op AccountOp) *RemoteChainOpImpl {
 	ca := &RemoteChainOpImpl{
 		aop:  op,
 		show: show,

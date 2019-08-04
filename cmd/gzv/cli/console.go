@@ -823,7 +823,7 @@ func Usage() {
 }
 
 func ConsoleInit(keystore, host string, port int, show bool, rpcport int) error {
-	aop, err := initAccountManager(keystore, false)
+	aop, err := InitAccountManager(keystore, false)
 	if err != nil {
 		return err
 	}
@@ -858,7 +858,7 @@ func handleCmd(handle func() *Result) {
 	}
 }
 
-func unlockLoop(cmd *unlockCmd, acm accountOp) {
+func unlockLoop(cmd *unlockCmd, acm AccountOp) {
 	c := 0
 
 	for c < 3 {
@@ -879,7 +879,7 @@ func unlockLoop(cmd *unlockCmd, acm accountOp) {
 	}
 }
 
-func loop(acm accountOp, chainOp chainOp) {
+func loop(acm AccountOp, chainOp chainOp) {
 
 	line := liner.NewLiner()
 	defer line.Close()

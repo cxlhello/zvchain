@@ -24,10 +24,10 @@ import (
 
 type WalletServer struct {
 	Port int
-	aop  accountOp
+	aop  AccountOp
 }
 
-func NewWalletServer(port int, aop accountOp) *WalletServer {
+func NewWalletServer(port int, aop AccountOp) *WalletServer {
 	ws := &WalletServer{
 		Port: port,
 		aop:  aop,

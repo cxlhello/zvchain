@@ -90,7 +90,7 @@ func dirExists(dir string) bool {
 	return f.IsDir()
 }
 
-func (a *Account)MinerSk() string  {
+func (a *Account) MinerSk() string {
 	return a.Sk
 }
 
@@ -111,7 +111,7 @@ func newAccountOp(ks string) (*AccountManager, error) {
 	}, nil
 }
 
-func initAccountManager(keystore string, readyOnly bool) (accountOp, error) {
+func InitAccountManager(keystore string, readyOnly bool) (AccountOp, error) {
 	// Specify internal account creation when you deploy in bulk (just create it once)
 	if readyOnly && !dirExists(keystore) {
 		aop, err := newAccountOp(keystore)

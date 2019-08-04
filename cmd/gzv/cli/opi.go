@@ -87,7 +87,7 @@ func txRawToTransaction(tx *txRawData) *types.Transaction {
 	}
 }
 
-type accountOp interface {
+type AccountOp interface {
 	NewAccount(password string, miner bool) *Result
 
 	AccountList() *Result
