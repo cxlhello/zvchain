@@ -64,7 +64,7 @@ type MinerInfo struct {
 func txRawToTransaction(tx *txRawData) *types.Transaction {
 	var target *common.Address
 	if tx.Target != "" {
-		t := common.HexToAddress(tx.Target)
+		t, _ := common.StringToAddress(tx.Target)
 		target = &t
 	}
 	var sign []byte

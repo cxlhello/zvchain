@@ -31,7 +31,8 @@ import (
 //export Transfer
 func Transfer(toAddress *C.char, value *C.char) bool {
 	toAddressStr := C.GoString(toAddress)
-	if !common.ValidateAddress(toAddressStr) {
+	to, err := common.StringToAddress(toAddressStr)
+	if err != nil {
 		return false
 	}
 	transValue, ok := big.NewInt(0).SetString(C.GoString(value), 10)
@@ -39,7 +40,6 @@ func Transfer(toAddress *C.char, value *C.char) bool {
 		return false
 	}
 	contractAddr := controller.VM.ContractAddress
-	to := common.HexToAddress(toAddressStr)
 
 	if !controller.AccountDB.CanTransfer(*contractAddr, transValue) {
 		return false
@@ -52,10 +52,10 @@ func Transfer(toAddress *C.char, value *C.char) bool {
 //export GetBalance
 func GetBalance(addressC *C.char) *C.char {
 	toAddressStr := C.GoString(addressC)
-	if !common.ValidateAddress(toAddressStr) {
+	address, err := common.StringToAddress(toAddressStr)
+	if err != nil {
 		return C.CString("0")
 	}
-	address := common.HexToAddress(C.GoString(addressC))
 	value := controller.AccountDB.GetBalance(address)
 	return C.CString(value.String())
 }

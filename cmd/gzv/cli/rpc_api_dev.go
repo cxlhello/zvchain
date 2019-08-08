@@ -83,14 +83,16 @@ func (api *RpcDevImpl) TransPool() (*Result, error) {
 }
 
 func (api *RpcDevImpl) BalanceByHeight(height uint64, account string) (*Result, error) {
-	if !validateAddress(strings.TrimSpace(account)) {
+	account = strings.TrimSpace(account)
+	address, err := common.StringToAddress(account)
+	if err != nil {
 		return failResult("Wrong account address format")
 	}
 	db, err := core.BlockChainImpl.GetAccountDBByHeight(height)
 	if err != nil {
 		return failResult("this height is invalid")
 	}
-	b := db.GetBalance(common.HexToAddress(account))
+	b := db.GetBalance(address)
 
 	balance := common.RA2TAS(b.Uint64())
 	return &Result{

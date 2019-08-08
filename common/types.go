@@ -51,7 +51,7 @@ var (
 	addressT            = reflect.TypeOf(Address{})
 	BonusStorageAddress = BigToAddress(big.NewInt(0))
 
-	GroupTopAddress     = BigToAddress(big.NewInt(3)) //save the current top group
+	GroupTopAddress = BigToAddress(big.NewInt(3)) //save the current top group
 )
 
 func ShortHex(hex string) string {
@@ -82,17 +82,20 @@ func BigToAddress(b *big.Int) Address { return BytesToAddress(b.Bytes()) }
 // HexToAddress returns the address of the input string assignment
 func HexToAddress(s string) Address { return BytesToAddress(FromHex(s)) }
 
+// StringToAddress returns the address of the input string assignment
+func StringToAddress(s string) (Address, error) {
+	if !ValidateAddress(s) {
+		return Address{}, errors.New("invalid address string")
+	}
+	return BytesToAddress(FromHex(s[2:])), nil
+}
+
 // SetBytes returns the address of the input byte array assignment
 func (a *Address) SetBytes(b []byte) {
 	if len(b) > len(a) {
 		b = b[len(b)-AddressLength:]
 	}
 	copy(a[:], b[:])
-}
-
-// SetString returns the address of the input hex string assignment
-func (a *Address) SetString(s string) {
-	a.SetBytes(FromHex(s))
 }
 
 // Set sets other to a

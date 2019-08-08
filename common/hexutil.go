@@ -233,7 +233,7 @@ func ShortHex12(hex string) string {
 	return hex[0:6] + "-" + hex[s-6:]
 }
 
-var addrReg = regexp.MustCompile("^0[xX][0-9a-fA-F]{64}$")
+var addrReg = regexp.MustCompile("^[Zz][Vv][0-9a-fA-F]{64}$")
 
 func ValidateAddress(addr string) bool {
 	return addrReg.MatchString(addr)

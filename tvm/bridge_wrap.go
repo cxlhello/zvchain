@@ -134,7 +134,7 @@ func CallContract(contractAddr string, funcName string, params string) *ExecuteR
 		result.Content = fmt.Sprintf("invalid address %s!", contractAddr)
 		return result
 	}
-	conAddr := common.HexToAddress(contractAddr)
+	conAddr, _ := common.StringToAddress(contractAddr)
 	contract := LoadContract(conAddr)
 	if contract.Code == "" {
 		result.ResultType = C.RETURN_TYPE_EXCEPTION
