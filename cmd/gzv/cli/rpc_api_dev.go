@@ -73,8 +73,8 @@ func (api *RpcDevImpl) TransPool() (*Result, error) {
 	for _, v := range transactions {
 		transList = append(transList, Transactions{
 			Hash:   v.Hash.Hex(),
-			Source: v.Source.Hex(),
-			Target: v.Target.Hex(),
+			Source: v.Source.AddrString(),
+			Target: v.Target.AddrString(),
 			Value:  v.Value.String(),
 		})
 	}
@@ -113,10 +113,10 @@ func (api *RpcDevImpl) GetTransaction(hash string) (*Result, error) {
 	detail := make(map[string]interface{})
 	detail["hash"] = hash
 	if transaction.Source != nil {
-		detail["source"] = transaction.Source.Hash().Hex()
+		detail["source"] = transaction.Source.AddrString()
 	}
 	if transaction.Target != nil {
-		detail["target"] = transaction.Target.Hash().Hex()
+		detail["target"] = transaction.Target.AddrString()
 	}
 	detail["value"] = transaction.Value
 
@@ -251,8 +251,8 @@ func (api *RpcDevImpl) CastStat(begin uint64, end uint64) (*Result, error) {
 func (api *RpcDevImpl) NodeInfo() (*Result, error) {
 	ni := &NodeInfo{}
 	p := mediator.Proc
-	ni.ID = p.GetMinerID().GetHexString()
-	balance := core.BlockChainImpl.GetBalance(common.HexToAddress(p.GetMinerID().GetHexString()))
+	ni.ID = p.GetMinerID().ToAddress().AddrString()
+	balance := core.BlockChainImpl.GetBalance(p.GetMinerID().ToAddress())
 	ni.Balance = common.RA2TAS(balance.Uint64())
 	if !p.Ready() {
 		ni.Status = "node not ready"

@@ -157,7 +157,7 @@ func (t *TvmCli) Deploy(contractName string, contractCode string) string {
 
 	nonce := state.GetNonce(*transaction.GetSource())
 	contractAddress := common.BytesToAddress(common.Sha256(common.BytesCombine(transaction.GetSource()[:], common.Uint64ToByte(nonce))))
-	fmt.Println("contractAddress: ", contractAddress.Hex())
+	fmt.Println("contractAddress: ", contractAddress.AddrString())
 	state.SetNonce(*transaction.GetSource(), nonce+1)
 
 	contract := tvm.Contract{
@@ -185,7 +185,7 @@ func (t *TvmCli) Deploy(contractName string, contractCode string) string {
 	}
 	t.settings.SetString("root", "StateHash", hash.Hex())
 	fmt.Println(hash.Hex())
-	return contractAddress.Hex()
+	return contractAddress.AddrString()
 }
 
 func (t *TvmCli) Call(contractAddress string, abiJSON string) {

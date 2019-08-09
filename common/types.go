@@ -29,6 +29,7 @@ import (
 )
 
 const PREFIX = "0x"
+const AddrPrefix = "zv"
 
 // getDefaultCurve returns the default elliptic curve
 func getDefaultCurve() elliptic.Curve {
@@ -137,6 +138,10 @@ func (a Address) IsValid() bool {
 
 func (a Address) String() string {
 	return ShortHex(a.Hex())
+}
+
+func (a Address) AddrString() string {
+	return AddrPrefix + hex.EncodeToString(a[:])
 }
 
 ///////////////////////////////////////////////////////////////////////////////

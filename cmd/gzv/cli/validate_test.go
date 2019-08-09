@@ -15,7 +15,10 @@
 
 package cli
 
-import "testing"
+import (
+	"github.com/zvchain/zvchain/common"
+	"testing"
+)
 
 func TestValidateAddress(t *testing.T) {
 	if common.ValidateAddress("0x123") {

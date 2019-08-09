@@ -395,9 +395,9 @@ func NewGtas() *Gtas {
 
 func (gtas *Gtas) autoApplyMiner(mType types.MinerType) {
 	miner := mediator.Proc.GetMinerInfo()
-	if miner.ID.GetHexString() != gtas.account.Address {
+	if miner.ID.ToAddress().AddrString() != gtas.account.Address {
 		// exit if miner's id not match the the account
-		panic(fmt.Errorf("id error %v %v", miner.ID.GetHexString(), gtas.account.Address))
+		panic(fmt.Errorf("id error %v %v", miner.ID.ToAddress().AddrString(), gtas.account.Address))
 	}
 
 	pks := &types.MinerPks{
