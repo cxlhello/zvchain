@@ -72,17 +72,14 @@ func genGroupRandomEntranceNodes(members []string) []NodeID {
 		connectedNodes = append(connectedNodes, *ID)
 	}
 
-	//randomConnectedIndex := int(-1)
-	//if len(connectedNodes) > 0 {
-	//	index := rand.Intn(len(connectedNodes))
-	//	randomConnectedIndex = connectedIndex[index]
-	//	nodesIndex = append(nodesIndex, randomConnectedIndex)
-	//	nodes = append(nodes, connectedNodes[index])
-	//}
-
-	if len(connectedNodes) >= maxSize {
-		return connectedNodes[0:maxSize]
+	randomConnectedIndex := int(-1)
+	if len(connectedNodes) > 0 {
+		index := rand.Intn(len(connectedNodes))
+		randomConnectedIndex = connectedIndex[index]
+		nodesIndex = append(nodesIndex, randomConnectedIndex)
+		nodes = append(nodes, connectedNodes[index])
 	}
+
 	//select one node in first column
 	rowSize := groupRowSize(totalSize)
 

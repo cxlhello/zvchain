@@ -23,8 +23,8 @@ import (
 	"time"
 )
 
-const DEFAULT_MAX_PEER_SIZE = 512
-const DEFAULT_MAX_PEER_SIZE_PER_IP = 16
+const DEFAULT_MAX_PEER_SIZE = 1024
+const DEFAULT_MAX_PEER_SIZE_PER_IP = 1024
 
 // PeerManager is node connection management
 type PeerManager struct {
