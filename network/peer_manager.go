@@ -17,6 +17,8 @@ package network
 
 import (
 	"bytes"
+	"github.com/sirupsen/logrus"
+	"github.com/zvchain/zvchain/log"
 	"net"
 	"strconv"
 	"sync"
@@ -232,10 +234,17 @@ func (pm *PeerManager) addPeer(netID uint64, peer *Peer) bool {
 	defer pm.mutex.Unlock()
 	if len(pm.peers) >= pm.maxPeerSize {
 		Logger.Infof("addPeer failed, peer size over %v ", pm.maxPeerSize)
+		log.ELKLogger.WithFields(logrus.Fields{
+			"max size": pm.maxPeerSize,
+		}).Debug("addPeer failed, peer size over ")
 		return false
 	}
 	if peer.IP != nil && len(peer.IP.String()) > 0 && !pm.peerIPSet.Add(peer.IP.String()) {
 		Logger.Infof("addPeer failed, peer in same IP exceed limit size !Max size:%v, ip:%v", pm.peerIPSet.Limit, peer.IP.String())
+		log.ELKLogger.WithFields(logrus.Fields{
+			"max size": pm.peerIPSet.Limit,
+			"IP":       peer.IP.String(),
+		}).Debug("addPeer failed, IP exceed limit size")
 		return false
 	}
 	pm.peers[netID] = peer
