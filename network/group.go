@@ -118,10 +118,10 @@ func genGroupRandomEntranceNodes(members []string) []NodeID {
 				nodes = append(nodes, *nID)
 			}
 		}
-		if len(nodesIndex) >= maxSize-len(connectedNodes) {
+		if len(nodesIndex) >= maxSize {
 			break
 		}
-		nodes = append(nodes, connectedNodes...)
+		//nodes = append(nodes, connectedNodes...)
 	}
 	return nodes
 }
