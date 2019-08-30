@@ -56,7 +56,7 @@ func genGroupRandomEntranceNodes(members []string) []NodeID {
 	}
 	maxSize := groupColumnSendCount(totalSize)
 
-	// select one connected node
+	// find connected nodes
 	for i := 0; i < totalSize; i++ {
 		ID := NewNodeID(members[i])
 		if ID == nil || *ID == netCore.ID {
@@ -72,14 +72,17 @@ func genGroupRandomEntranceNodes(members []string) []NodeID {
 		connectedNodes = append(connectedNodes, *ID)
 	}
 
-	randomConnectedIndex := int(-1)
-	if len(connectedNodes) > 0 {
-		index := rand.Intn(len(connectedNodes))
-		randomConnectedIndex = connectedIndex[index]
-		nodesIndex = append(nodesIndex, randomConnectedIndex)
-		nodes = append(nodes, connectedNodes[index])
-	}
+	//randomConnectedIndex := int(-1)
+	//if len(connectedNodes) > 0 {
+	//	index := rand.Intn(len(connectedNodes))
+	//	randomConnectedIndex = connectedIndex[index]
+	//	nodesIndex = append(nodesIndex, randomConnectedIndex)
+	//	nodes = append(nodes, connectedNodes[index])
+	//}
 
+	if len(connectedNodes) >= maxSize {
+		return connectedNodes[0:maxSize]
+	}
 	//select one node in first column
 	rowSize := groupRowSize(totalSize)
 
@@ -88,7 +91,7 @@ func genGroupRandomEntranceNodes(members []string) []NodeID {
 	columnIndex := rand.Intn(rowCount)
 	nIndex := columnIndex * rowSize
 	nID := NewNodeID(members[nIndex])
-	if nID != nil && randomConnectedIndex != nIndex {
+	if nID != nil {
 		nodesIndex = append(nodesIndex, nIndex)
 		nodes = append(nodes, *nID)
 	}
@@ -118,9 +121,10 @@ func genGroupRandomEntranceNodes(members []string) []NodeID {
 				nodes = append(nodes, *nID)
 			}
 		}
-		if len(nodesIndex) >= maxSize {
+		if len(nodesIndex) >= maxSize-len(connectedNodes) {
 			break
 		}
+		nodes = append(nodes, connectedNodes...)
 	}
 	return nodes
 }
