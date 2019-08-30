@@ -26,7 +26,7 @@ import (
 )
 
 const DEFAULT_MAX_PEER_SIZE = 1024
-const DEFAULT_MAX_PEER_SIZE_PER_IP = 16
+const DEFAULT_MAX_PEER_SIZE_PER_IP = 64
 
 // PeerManager is node connection management
 type PeerManager struct {
