@@ -412,7 +412,7 @@ func ShowPubKeyInfo(info model.SelfMinerDO, id string) {
 }
 
 func NewBrowserDBMmanagement() {
-	var dbAddr, rpcAddr string
+	var browerdbaddr, rpcAddr string
 	var dbPort, rpcPort int
 	var dbUser, dbPassword string
 	var help bool
@@ -420,20 +420,20 @@ func NewBrowserDBMmanagement() {
 
 	flag.BoolVar(&help, "h", false, "help")
 	flag.BoolVar(&reset, "reset", false, "reset database")
-	flag.StringVar(&dbAddr, "dbaddr", "10.0.0.13", "database address")
+	flag.StringVar(&browerdbaddr, "browerdbaddr", "47.104.189.61", "database address")
 	flag.StringVar(&rpcAddr, "rpcaddr", "localhost", "RPC address")
 	flag.IntVar(&dbPort, "dbport", 3306, "database port")
 	flag.IntVar(&rpcPort, "rpcport", 8101, "RPC port")
 	flag.StringVar(&dbUser, "dbuser", "root", "database user")
-	flag.StringVar(&dbPassword, "dbpw", "root123", "database password")
+	flag.StringVar(&dbPassword, "browerdbpw", "TASchain@1003", "database password")
 	flag.Parse()
 
 	if help {
 		flag.Usage()
 	}
-	fmt.Println("browserdbmmanagement flags:", dbAddr, dbPort, dbUser, dbPassword, reset)
-	browser.NewDBMmanagement(dbAddr, dbPort, dbUser, dbPassword, reset)
-	crontab.NewServer(dbAddr, dbPort, dbUser, dbPassword, reset)
+	fmt.Println("browserdbmmanagement flags:", browerdbaddr, dbPort, dbUser, dbPassword, reset)
+	browser.NewDBMmanagement(browerdbaddr, dbPort, dbUser, dbPassword, reset)
+	crontab.NewServer(browerdbaddr, dbPort, dbUser, dbPassword, reset)
 }
 
 func NewGtas() *Gtas {
