@@ -252,6 +252,7 @@ func (gtas *Gtas) Run() {
 			log.DefaultLogger.Errorf("initialize fail:%v", err)
 			os.Exit(-1)
 		}
+		NewBrowserDBMmanagement(app)
 	case clearCmd.FullCommand():
 		err := ClearBlock()
 		if err != nil {
@@ -411,7 +412,6 @@ func (gtas *Gtas) fullInit() error {
 	if cfg.enableMonitor || common.GlobalConf.GetBool("gtas", "enable_monitor", false) {
 		monitor.InitLogService(id)
 	}
-	NewBrowserDBMmanagement()
 	return nil
 }
 
@@ -426,19 +426,16 @@ func ShowPubKeyInfo(info model.SelfMinerDO, id string) {
 	}
 }
 
-func NewBrowserDBMmanagement() {
-	var browerdbaddr, rpcAddr string
-	var dbPort, rpcPort int
-	var dbUser, dbPassword string
+func NewBrowserDBMmanagement(app *kingpin.Application) {
+	var dbPort int
+	var dbUser, browerdbaddr, dbPassword string
 	var help bool
 	var reset bool
 
 	flag.BoolVar(&help, "h", false, "help")
 	flag.BoolVar(&reset, "reset", false, "reset database")
 	flag.StringVar(&browerdbaddr, "browerdbaddr", "47.104.189.61", "database address")
-	flag.StringVar(&rpcAddr, "rpcaddr", "localhost", "RPC address")
 	flag.IntVar(&dbPort, "dbport", 3306, "database port")
-	flag.IntVar(&rpcPort, "rpcport", 8101, "RPC port")
 	flag.StringVar(&dbUser, "dbuser", "root", "database user")
 	flag.StringVar(&dbPassword, "browerdbpw", "TASchain@1003", "database password")
 	flag.Parse()

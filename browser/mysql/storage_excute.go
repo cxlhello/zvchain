@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/jinzhu/gorm"
 	"github.com/zvchain/zvchain/browser/models"
+	"time"
 )
 
 const (
@@ -136,7 +137,7 @@ func (storage *Storage) AddBlockRewardMysqlTransaction(accounts map[string]uint6
 			return false
 		}
 	}
-	if !increwardBlockheightTosys(tx) {
+	if !storage.IncrewardBlockheightTosys(tx) {
 		return false
 	}
 	tx.Commit()
@@ -194,7 +195,7 @@ func getstakefrom(tx *gorm.DB, address string, from string) *models.PoolStake {
 	return stake
 
 }
-func increwardBlockheightTosys(tx *gorm.DB) bool {
+func (storage *Storage) IncrewardBlockheightTosys(tx *gorm.DB) bool {
 
 	sys := &models.Sys{
 		Variable: Blockrewardtophight,
@@ -364,4 +365,96 @@ func (storage *Storage) AddGroup(group *models.Group) bool {
 	}
 	storage.db.Create(&group)
 	return true
+}
+
+func (storage *Storage) AddBlock(block *models.Block) bool {
+	//fmt.Println("[Storage] add block ")
+	if storage.db == nil {
+		fmt.Println("[Storage] storage.db == nil")
+		return false
+	}
+	timeBegin := time.Now()
+
+	if storage.topbrowserBlockHeight < block.Height {
+		storage.topbrowserBlockHeight = block.Height
+	}
+	//storage.statistics.BlocksCountToday += 1
+	//storage.statistics.TopBlockHeight = storage.topbrowserBlockHeight
+	storage.db.Create(&block)
+	fmt.Println("[Storage]  AddBlock cost: ", time.Since(timeBegin))
+	return true
+}
+
+func (storage *Storage) AddTransactions(trans []*models.Transaction) bool {
+	//fmt.Println("[Storage] add transaction ")
+	if storage.db == nil {
+		fmt.Println("[Storage] storage.db == nil")
+		return false
+	}
+	timeBegin := time.Now()
+	tx := storage.db.Begin()
+	for i := 0; i < len(trans); i++ {
+		if trans[i] != nil {
+			tx.Create(&trans[i])
+		}
+	}
+	//storage.statistics.TransCountToday += uint64(len(trans))
+	//storage.statistics.TotalTransCount += uint64(len(trans))
+	tx.Commit()
+	fmt.Println("[Storage]  AddTransactions cost: ", time.Since(timeBegin))
+
+	return true
+}
+
+func (storage *Storage) AddReceipts(receipts []*models.Receipt) bool {
+	//fmt.Println("[Storage] add receipt ")
+	if storage.db == nil {
+		fmt.Println("[Storage] storage.db == nil")
+		return false
+	}
+	timeBegin := time.Now()
+
+	tx := storage.db.Begin()
+	for i := 0; i < len(receipts); i++ {
+		if receipts[i] != nil {
+			tx.Create(&receipts[i])
+		}
+	}
+	tx.Commit()
+	fmt.Println("[Storage]  AddReceipts cost: ", time.Since(timeBegin))
+
+	return true
+}
+
+func (storage *Storage) browserTopBlockHeight() uint64 {
+	if storage.db == nil {
+		return 0
+	}
+	blocks := make([]models.Block, 0, 1)
+	storage.db.Limit(1).Order("height desc").Find(&blocks)
+	if len(blocks) > 0 {
+		//storage.topBlockHeight = blocks[0].Height
+
+		return uint64(blocks[0].Height)
+	}
+	return 0
+}
+
+func (storage *Storage) DeleteForkblock(preHeight uint64, localHeight uint64) (err error) {
+
+	defer func() { // 必须要先声明defer，否则不能捕获到panic异常
+		if err := recover(); err != nil {
+			fmt.Println(err) // 这里的err其实就是panic传入的内容
+		}
+	}()
+	var maxHeight uint64
+	storage.db.Table("accounts").Select("max(height) as height").Row().Scan(&maxHeight)
+	if maxHeight <= preHeight {
+		return nil
+	}
+	go storage.db.Where("height > ? and height < ?", preHeight, localHeight).Delete(models.Block{})
+	go storage.db.Where("block_height > ? and block_height < ?", preHeight, localHeight).Delete(models.Transaction{})
+	go storage.db.Where("block_height > ? and block_height < ?", preHeight, localHeight).Delete(models.Receipt{})
+
+	return err
 }

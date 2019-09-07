@@ -17,6 +17,7 @@ package models
 
 import (
 	"github.com/jinzhu/gorm"
+	"time"
 )
 
 type PoolStake struct {
@@ -66,4 +67,78 @@ type Group struct {
 	Members       []string `json:"members" gorm:"-"`
 	MemberCount   uint64   `json:"member_count" `
 	MembersStr    string   `json:"members_str"  gorm:"type:TEXT;size:65000"`
+}
+
+type Block struct {
+	gorm.Model
+	Height          uint64                 `json:"height" gorm:"index"`
+	Hash            string                 `json:"hash" gorm:"index"`
+	PreHash         string                 `json:"pre_hash"`
+	CurTime         time.Time              `json:"cur_time" gorm:"index"`
+	PreTime         time.Time              `json:"pre_time"`
+	Castor          string                 `json:"castor" gorm:"index"`
+	GroupID         string                 `json:"group_id" gorm:"index"`
+	TotalQN         uint64                 `json:"total_qn"`
+	Qn              uint64                 `json:"qn"`
+	TransCount      uint64                 `json:"trans_count"`
+	RewardInfo      map[string]interface{} `json:"reward_info" gorm:"-"`
+	LoadVerifyCount uint32                 `json:"load_verify_count"`
+	LoadVerify      bool                   `json:"load_verify"`
+}
+
+type Transaction struct {
+	gorm.Model
+	BlockHash   string    `json:"block_hash" gorm:"index"`
+	BlockHeight uint64    `json:"block_height" gorm:"index"`
+	Data        string    `json:"data" gorm:"type:TEXT;size:65000"`
+	Value       float64   `json:"value"`
+	Nonce       uint64    `json:"nonce"`
+	Source      string    `json:"source" gorm:"index"`
+	Target      string    `json:"target" gorm:"index"`
+	Type        int32     `json:"type"`
+	CurTime     time.Time `json:"cur_time" gorm:"index"`
+
+	GasLimit uint64   `json:"gas_limit"`
+	GasPrice uint64   `json:"gas_price"`
+	Hash     string   `json:"hash" gorm:"index"`
+	Receipt  *Receipt `json:"receipt" gorm:"-"`
+
+	ExtraData string `json:"extra_data" gorm:"type:TEXT;size:65000"`
+}
+
+type Receipt struct {
+	Status            uint   `json:"status"`
+	CumulativeGasUsed uint64 `json:"cumulativeGasUsed"`
+	Logs              []*Log `json:"logs" gorm:"-"`
+
+	TxHash          string `json:"transactionHash" gorm:"index"`
+	ContractAddress string `json:"contractAddress"`
+	BlockHash       string `json:"block_hash" gorm:"index"`
+	BlockHeight     uint64 `json:"block_height" gorm:"index"`
+}
+
+type Log struct {
+	Address string `json:"address"`
+
+	Topics []string `json:"topics" gorm:"-"`
+
+	Data string `json:"data"`
+
+	BlockNumber uint64 `json:"blockNumber"  gorm:"index"`
+
+	TxHash string `json:"transactionHash"  gorm:"index"`
+
+	TxIndex uint `json:"transactionIndex"  gorm:"index"`
+
+	BlockHash string `json:"blockHash"  gorm:"index"`
+
+	Index uint `json:"logIndex"`
+
+	Removed bool `json:"removed"`
+}
+type BlockDetail struct {
+	Block
+	Trans           []*Transaction `json:"trans"`
+	Receipts        []*Receipt     `json:"receipts"`
+	EvictedReceipts []*Receipt     `json:"evictedReceipts"`
 }

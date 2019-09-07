@@ -3,11 +3,13 @@ package crontab
 import (
 	"encoding/json"
 	"fmt"
+	browsernotify "github.com/zvchain/zvchain/browser/browsernotify"
 	"github.com/zvchain/zvchain/browser/models"
 	"github.com/zvchain/zvchain/browser/mysql"
 	"github.com/zvchain/zvchain/browser/util"
 	"github.com/zvchain/zvchain/common"
 	"github.com/zvchain/zvchain/core"
+	"github.com/zvchain/zvchain/middleware/notify"
 	"github.com/zvchain/zvchain/middleware/types"
 	"sync/atomic"
 	"time"
@@ -26,12 +28,16 @@ type Crontab struct {
 	isFetchingPoolvotes int32
 	rpcExplore          *Explore
 	transfer            *Transfer
+	fetcher             *Fetcher
+	notify              browsernotify.BrowserForkProcessor
+	isFetchingBlocks    bool
 }
 
 func NewServer(dbAddr string, dbPort int, dbUser string, dbPassword string, reset bool) *Crontab {
-
 	server := &Crontab{}
+	server.fetcher.ExplorerBlockDetail(1)
 	server.storage = mysql.NewStorage(dbAddr, dbPort, dbUser, dbPassword, reset)
+	notify.BUS.Subscribe(notify.BlockAddSucc, server.notify.OnBlockAddSuccess)
 	server.blockHeight = server.storage.TopBlockRewardHeight(mysql.Blockrewardtophight)
 	if server.blockHeight > 0 {
 		server.blockHeight += 1
@@ -47,18 +53,36 @@ func (crontab *Crontab) loop() {
 	defer check.Stop()
 	go crontab.fetchPoolVotes()
 	go crontab.fetchBlockRewards()
-	//go crontab.fetchBlockStakeAll()
 
 	for {
 		select {
 		case <-check.C:
 			go crontab.fetchPoolVotes()
 			go crontab.fetchBlockRewards()
-			//go crontab.fetchBlockStakeAll()
 
 		}
 	}
 }
+
+//uopdate invalid guard and pool
+func (crontab *Crontab) fetchPoolVotes() {
+
+	if !atomic.CompareAndSwapInt32(&crontab.isFetchingPoolvotes, 0, 1) {
+		return
+	}
+	crontab.excutePoolVotes()
+	atomic.CompareAndSwapInt32(&crontab.isFetchingPoolvotes, 1, 0)
+
+}
+
+func (crontab *Crontab) fetchBlockRewards() {
+	if !atomic.CompareAndSwapInt32(&crontab.isFetchingReward, 0, 1) {
+		return
+	}
+	crontab.excuteBlockRewards()
+	atomic.CompareAndSwapInt32(&crontab.isFetchingReward, 1, 0)
+}
+
 func (crontab *Crontab) excutePoolVotes() {
 	accountsPool := crontab.storage.GetAccountByRoletype(crontab.maxid, types.MinerPool)
 	if accountsPool != nil && len(accountsPool) > 0 {
@@ -107,34 +131,13 @@ func (crontab *Crontab) excutePoolVotes() {
 	}
 }
 
-//uopdate invalid guard and pool
-func (crontab *Crontab) fetchPoolVotes() {
-
-	if !atomic.CompareAndSwapInt32(&crontab.isFetchingPoolvotes, 0, 1) {
-		return
-	}
-	crontab.excutePoolVotes()
-	atomic.CompareAndSwapInt32(&crontab.isFetchingPoolvotes, 1, 0)
-
-}
-
-func (crontab *Crontab) fetchBlockRewards() {
-	if !atomic.CompareAndSwapInt32(&crontab.isFetchingReward, 0, 1) {
-		return
-	}
-	crontab.excuteBlockRewards()
-	atomic.CompareAndSwapInt32(&crontab.isFetchingReward, 1, 0)
-}
-
 func (crontab *Crontab) excuteBlockRewards() {
 	height, _ := crontab.storage.TopBlockHeight()
 	if crontab.blockHeight > height {
 		return
 	}
-	//blockheader := core.BlockChainImpl.CheckPointAt(mysql.CheckpointMaxHeight)
-	/*if crontab.blockHeight > blockheader.Height {
-		return
-	}*/
+	topblock := core.BlockChainImpl.QueryTopBlock()
+	topheight := topblock.Height
 	rewards := crontab.rpcExplore.GetPreHightRewardByHeight(crontab.blockHeight)
 	fmt.Println("[crontab]  fetchBlockRewards height:", crontab.blockHeight, 0)
 
@@ -148,7 +151,7 @@ func (crontab *Crontab) excuteBlockRewards() {
 		}
 		crontab.excuteBlockRewards()
 
-	} else {
+	} else if crontab.blockHeight < topheight {
 		crontab.blockHeight += 1
 
 		fmt.Println("[crontab]  fetchBlockRewards rewards nil:", crontab.blockHeight, rewards)
@@ -156,17 +159,36 @@ func (crontab *Crontab) excuteBlockRewards() {
 	}
 }
 
-func (crontab *Crontab) Produce(header map[string]uint64, pipe chan map[string]uint64) {
-	for {
-		pipe <- header
-		time.Sleep(time.Second)
-	}
+func (server *Crontab) fetchBlocks() {
 
-}
-func (crontab *Crontab) Consume(pipe chan map[string]uint64) bool {
-	for {
-		accounts := <-pipe
-		return crontab.storage.AddBlockRewardMysqlTransaction(accounts)
+	if server.isFetchingBlocks {
+		return
 	}
+	server.isFetchingBlocks = true
+	fmt.Println("[server]  fetchBlock height:", server.blockHeight)
+
+	blockDetail, _ := server.fetcher.ExplorerBlockDetail(server.blockHeight)
+	//fmt.Println("[server]  blockDetail :", blockDetail)
+
+	if blockDetail != nil {
+		if server.storage.AddBlock(&blockDetail.Block) {
+			for i := 0; i < len(blockDetail.Trans); i++ {
+				blockDetail.Trans[i].BlockHash = blockDetail.Block.Hash
+				blockDetail.Trans[i].BlockHeight = blockDetail.Block.Height
+				blockDetail.Trans[i].CurTime = blockDetail.Block.CurTime
+			}
+			server.storage.AddTransactions(blockDetail.Trans)
+			for i := 0; i < len(blockDetail.Receipts); i++ {
+				blockDetail.Receipts[i].BlockHash = blockDetail.Block.Hash
+				blockDetail.Receipts[i].BlockHeight = blockDetail.Block.Height
+			}
+			server.storage.AddReceipts(blockDetail.Receipts)
+
+			server.blockHeight = blockDetail.Block.Height + 1
+			go server.fetchBlocks()
+
+		}
+	}
+	server.isFetchingBlocks = false
 
 }

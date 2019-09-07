@@ -3,7 +3,6 @@ package browser
 import (
 	"fmt"
 	"github.com/jinzhu/gorm"
-	"github.com/zvchain/zvchain/browser/crontab"
 	"github.com/zvchain/zvchain/browser/models"
 	"github.com/zvchain/zvchain/browser/mysql"
 	"github.com/zvchain/zvchain/browser/util"
@@ -43,7 +42,6 @@ type DBMmanagement struct {
 	groupHeight        uint64
 	dismissGropHeight  uint64
 	storage            *mysql.Storage //待迁移
-	crontab            *crontab.Crontab
 
 	isFetchingBlocks        int32
 	isFetchingWorkGroups    bool
