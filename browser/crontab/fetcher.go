@@ -45,7 +45,6 @@ func (api *Fetcher) ExplorerBlockDetail(height uint64) (*models.BlockDetail, err
 		EvictedReceipts: evictedReceipts,
 		Receipts:        receipts,
 	}
-	fmt.Println("ExplorerBlockDetail", util.ObjectTojson(bd))
 	return bd, nil
 }
 

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/jinzhu/gorm"
 	"github.com/zvchain/zvchain/browser/models"
-	"github.com/zvchain/zvchain/browser/util"
 	"time"
 )
 
@@ -396,7 +395,6 @@ func (storage *Storage) AddTransactions(trans []*models.Transaction) bool {
 	tx := storage.db.Begin()
 	for i := 0; i < len(trans); i++ {
 		if trans[i] != nil {
-			fmt.Println("[Storage]  AddTransactions: ", util.ObjectTojson(&trans[i]))
 			tx.Create(&trans[i])
 		}
 	}
