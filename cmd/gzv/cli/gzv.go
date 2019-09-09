@@ -57,6 +57,7 @@ type Gzv struct {
 	account      Account
 	config       *minerConfig
 	rpcInstances []rpcApi
+	InitCha      chan bool
 }
 
 var globalGzv *Gzv
@@ -140,7 +141,8 @@ func (gzv *Gzv) Run() {
 	showRequest := consoleCmd.Flag("show", "show the request json").Short('v').Bool()
 	remoteHost := consoleCmd.Flag("host", "the node host address to connect").Short('i').String()
 	remotePort := consoleCmd.Flag("port", "the node host port to connect").Short('p').Default("8101").Int()
-	rpcPort := consoleCmd.Flag("rpcport", "gzv console will listen at the port for wallet service").Short('r').Default("0").Int()
+	rpcPort := consoleCmd.Flag("rpcport", "gzv console will listen at the port for wallet service").Default("0").Int()
+	rpcHost := consoleCmd.Flag("rpchost", "gzv console will listen at the host for wallet service").Default("127.0.0.1").String()
 
 	// Version
 	versionCmd := app.Command("version", "show gzv version")
@@ -191,7 +193,7 @@ func (gzv *Gzv) Run() {
 		fmt.Println("gzv Version:", common.GtasVersion)
 		os.Exit(0)
 	case consoleCmd.FullCommand():
-		err := ConsoleInit(*keystore, *remoteHost, *remotePort, *showRequest, *rpcPort)
+		err := ConsoleInit(*keystore, *remoteHost, *remotePort, *showRequest, *rpcHost, *rpcPort)
 		if err != nil {
 			fmt.Println(err.Error())
 		}
@@ -237,7 +239,7 @@ func (gzv *Gzv) Run() {
 			log.DefaultLogger.Errorf("initialize fail:%v", err)
 			os.Exit(-1)
 		}
-
+		gzv.InitCha <- true
 	case clearCmd.FullCommand():
 		err := ClearBlock()
 		if err != nil {
@@ -291,10 +293,8 @@ func (gzv *Gzv) checkAddress(keystore, address, password string, autoCreateAccou
 
 func (gzv *Gzv) fullInit() error {
 	var err error
-
 	// Initialization middlewarex
 	middleware.InitMiddleware()
-
 	cfg := gzv.config
 
 	addressConfig := common.GlobalConf.GetString(Section, "miner", "")
@@ -439,6 +439,7 @@ func NewBrowserDBMmanagement() {
 
 func NewGzv() *Gzv {
 	globalGzv = new(Gzv)
+	globalGzv.InitCha = make(chan bool)
 	return globalGzv
 }
 
