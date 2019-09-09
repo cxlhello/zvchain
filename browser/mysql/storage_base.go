@@ -90,6 +90,15 @@ func (storage *Storage) Init(reset bool) {
 	if !db.HasTable(&models.Group{}) {
 		db.CreateTable(&models.Group{})
 	}
+	if !db.HasTable(&models.Block{}) {
+		db.CreateTable(&models.Block{})
+	}
+	if !db.HasTable(&models.Transaction{}) {
+		db.CreateTable(&models.Transaction{})
+	}
+	if !db.HasTable(&models.Receipt{}) {
+		db.CreateTable(&models.Receipt{})
+	}
 
 }
 

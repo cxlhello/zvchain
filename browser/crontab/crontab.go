@@ -200,7 +200,7 @@ func (crontab *Crontab) OnBlockAddSuccess(message notify.Message) error {
 	bh := block.Header
 	if crontab.isInited {
 		maxHeight := crontab.storage.GetTopblock()
-		if bh.Height > maxHeight+1 {
+		if maxHeight > 0 && bh.Height > maxHeight+1 {
 			for i := maxHeight; i < bh.Height; i++ {
 				blockceil := core.BlockChainImpl.QueryBlockCeil(i)
 				preBlockceil := core.BlockChainImpl.QueryBlockByHash(blockceil.Header.PreHash)
