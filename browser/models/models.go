@@ -17,6 +17,7 @@ package models
 
 import (
 	"github.com/jinzhu/gorm"
+	"github.com/zvchain/zvchain/common"
 	"time"
 )
 
@@ -50,6 +51,11 @@ type Account struct {
 
 type PoolExtraData struct {
 	Vote uint64 `json:"vote"`
+}
+
+type ForkNotify struct {
+	PreHeight   uint64
+	LocalHeight uint64
 }
 type Sys struct {
 	gorm.Model
@@ -86,6 +92,21 @@ type Block struct {
 	LoadVerify      bool                   `json:"load_verify"`
 }
 
+type TempTransaction struct {
+	Data   []byte          `json:"data"`
+	Value  float64         `json:"value"`
+	Nonce  uint64          `json:"nonce"`
+	Source *common.Address `json:"source"`
+	Target *common.Address `json:"target"`
+	Type   int8            `json:"type"`
+
+	GasLimit uint64      `json:"gas_limit"`
+	GasPrice uint64      `json:"gas_price"`
+	Hash     common.Hash `json:"hash"`
+
+	ExtraData string `json:"extra_data"`
+}
+
 type Transaction struct {
 	gorm.Model
 	BlockHash   string    `json:"block_hash" gorm:"index"`
@@ -98,12 +119,11 @@ type Transaction struct {
 	Type        int32     `json:"type"`
 	CurTime     time.Time `json:"cur_time" gorm:"index"`
 
-	GasLimit uint64   `json:"gas_limit"`
-	GasPrice uint64   `json:"gas_price"`
-	Hash     string   `json:"hash" gorm:"index"`
-	Receipt  *Receipt `json:"receipt" gorm:"-"`
-
-	ExtraData string `json:"extra_data" gorm:"type:TEXT;size:65000"`
+	GasLimit  uint64   `json:"gas_limit"`
+	GasPrice  uint64   `json:"gas_price"`
+	Hash      string   `json:"hash" gorm:"index"`
+	Receipt   *Receipt `json:"receipt" gorm:"-"`
+	ExtraData string   `json:"extra_data" gorm:"type:TEXT;size:65000"`
 }
 
 type Receipt struct {
@@ -138,7 +158,7 @@ type Log struct {
 }
 type BlockDetail struct {
 	Block
-	Trans           []*Transaction `json:"trans"`
-	Receipts        []*Receipt     `json:"receipts"`
-	EvictedReceipts []*Receipt     `json:"evictedReceipts"`
+	Trans           []*TempTransaction `json:"trans"`
+	Receipts        []*Receipt         `json:"receipts"`
+	EvictedReceipts []*Receipt         `json:"evictedReceipts"`
 }

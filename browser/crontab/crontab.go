@@ -3,7 +3,6 @@ package crontab
 import (
 	"encoding/json"
 	"fmt"
-	browsernotify "github.com/zvchain/zvchain/browser/browsernotify"
 	"github.com/zvchain/zvchain/browser/models"
 	"github.com/zvchain/zvchain/browser/mysql"
 	"github.com/zvchain/zvchain/browser/util"
@@ -18,26 +17,30 @@ import (
 const checkInterval = time.Second * 10
 
 type Crontab struct {
-	storage          *mysql.Storage
-	blockHeight      uint64
-	page             uint64
-	maxid            uint
-	accountPrimaryId uint64
-	isFetchingReward int32
+	storage           *mysql.Storage
+	blockHeight       uint64
+	page              uint64
+	maxid             uint
+	accountPrimaryId  uint64
+	isFetchingReward  int32
+	isFetchingConsume int32
 
+	isInited            bool
 	isFetchingPoolvotes int32
 	rpcExplore          *Explore
 	transfer            *Transfer
 	fetcher             *Fetcher
-	notify              browsernotify.BrowserForkProcessor
 	isFetchingBlocks    bool
+	initdata            chan *models.ForkNotify
 }
 
 func NewServer(dbAddr string, dbPort int, dbUser string, dbPassword string, reset bool) *Crontab {
-	server := &Crontab{}
-	server.fetcher.ExplorerBlockDetail(1)
+	server := &Crontab{
+		initdata: make(chan *models.ForkNotify, 100),
+	}
 	server.storage = mysql.NewStorage(dbAddr, dbPort, dbUser, dbPassword, reset)
-	notify.BUS.Subscribe(notify.BlockAddSucc, server.notify.OnBlockAddSuccess)
+	server.isInited = true
+	notify.BUS.Subscribe(notify.BlockAddSucc, server.OnBlockAddSuccess)
 	server.blockHeight = server.storage.TopBlockRewardHeight(mysql.Blockrewardtophight)
 	if server.blockHeight > 0 {
 		server.blockHeight += 1
@@ -52,14 +55,14 @@ func (crontab *Crontab) loop() {
 	)
 	defer check.Stop()
 	go crontab.fetchPoolVotes()
-	go crontab.fetchBlockRewards()
-
+	//go crontab.fetchBlockRewards()
+	go crontab.Consume()
 	for {
 		select {
 		case <-check.C:
 			go crontab.fetchPoolVotes()
-			go crontab.fetchBlockRewards()
-
+			//go crontab.fetchBlockRewards()
+			//go crontab.Consume()
 		}
 	}
 }
@@ -159,36 +162,84 @@ func (crontab *Crontab) excuteBlockRewards() {
 	}
 }
 
-func (server *Crontab) fetchBlocks() {
-
-	if server.isFetchingBlocks {
-		return
-	}
-	server.isFetchingBlocks = true
-	fmt.Println("[server]  fetchBlock height:", server.blockHeight)
-
-	blockDetail, _ := server.fetcher.ExplorerBlockDetail(server.blockHeight)
-	//fmt.Println("[server]  blockDetail :", blockDetail)
-
+func (server *Crontab) fetchBlock(localHeight uint64, pre uint64) {
+	fmt.Println("[server]  fetchBlock height:", localHeight)
+	var maxHeight uint64
+	maxHeight = server.storage.GetTopblock()
+	blockDetail, _ := server.fetcher.ExplorerBlockDetail(localHeight)
 	if blockDetail != nil {
 		if server.storage.AddBlock(&blockDetail.Block) {
+			trans := make([]*models.Transaction, 0, 0)
 			for i := 0; i < len(blockDetail.Trans); i++ {
-				blockDetail.Trans[i].BlockHash = blockDetail.Block.Hash
-				blockDetail.Trans[i].BlockHeight = blockDetail.Block.Height
-				blockDetail.Trans[i].CurTime = blockDetail.Block.CurTime
+				tran := server.fetcher.ConvertTempTransactionToTransaction(blockDetail.Trans[i])
+				tran.BlockHash = blockDetail.Block.Hash
+				tran.BlockHeight = blockDetail.Block.Height
+				tran.CurTime = blockDetail.Block.CurTime
+				trans = append(trans, tran)
 			}
-			server.storage.AddTransactions(blockDetail.Trans)
+			server.storage.AddTransactions(trans)
 			for i := 0; i < len(blockDetail.Receipts); i++ {
 				blockDetail.Receipts[i].BlockHash = blockDetail.Block.Hash
 				blockDetail.Receipts[i].BlockHeight = blockDetail.Block.Height
 			}
 			server.storage.AddReceipts(blockDetail.Receipts)
 
-			server.blockHeight = blockDetail.Block.Height + 1
-			go server.fetchBlocks()
-
+			//server.blockHeight = blockDetail.Block.Height + 1
+			//go server.fetchBlocks()
+		}
+		if maxHeight > pre {
+			server.storage.DeleteForkblock(pre, localHeight)
 		}
 	}
-	server.isFetchingBlocks = false
+	//server.isFetchingBlocks = false
 
+}
+
+func (crontab *Crontab) OnBlockAddSuccess(message notify.Message) error {
+	block := message.GetData().(*types.Block)
+	bh := block.Header
+	if crontab.isInited {
+		maxHeight := crontab.storage.GetTopblock()
+		if bh.Height > maxHeight+1 {
+			for i := maxHeight; i < bh.Height; i++ {
+				blockceil := core.BlockChainImpl.QueryBlockCeil(i)
+				preBlockceil := core.BlockChainImpl.QueryBlockByHash(blockceil.Header.PreHash)
+				produce := &models.ForkNotify{
+					PreHeight:   preBlockceil.Header.Height,
+					LocalHeight: blockceil.Header.Height,
+				}
+				go crontab.Produce(produce)
+			}
+		}
+		crontab.isInited = false
+	}
+	preHash := bh.PreHash
+	preBlock := core.BlockChainImpl.QueryBlockByHash(preHash)
+	preHight := preBlock.Header.Height
+	fmt.Println("BrowserForkProcessor,pre:", preHight, bh.Height)
+	data := &models.ForkNotify{
+		PreHeight:   preHight,
+		LocalHeight: bh.Height,
+	}
+	go crontab.Produce(data)
+	return nil
+}
+
+func (crontab *Crontab) Produce(data *models.ForkNotify) {
+	crontab.initdata <- data
+	fmt.Println("for Produce", util.ObjectTojson(data))
+}
+func (crontab *Crontab) Consume() {
+	if !atomic.CompareAndSwapInt32(&crontab.isFetchingConsume, 0, 1) {
+		return
+	}
+	var ok = true
+	for ok {
+		select {
+		case data := <-crontab.initdata:
+			crontab.fetchBlock(data.LocalHeight, data.PreHeight)
+			fmt.Println("for Consume", util.ObjectTojson(data))
+		}
+	}
+	atomic.CompareAndSwapInt32(&crontab.isFetchingConsume, 1, 0)
 }

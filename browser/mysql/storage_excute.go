@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/jinzhu/gorm"
 	"github.com/zvchain/zvchain/browser/models"
+	"github.com/zvchain/zvchain/browser/util"
 	"time"
 )
 
@@ -395,6 +396,7 @@ func (storage *Storage) AddTransactions(trans []*models.Transaction) bool {
 	tx := storage.db.Begin()
 	for i := 0; i < len(trans); i++ {
 		if trans[i] != nil {
+			fmt.Println("[Storage]  AddTransactions: ", util.ObjectTojson(&trans[i]))
 			tx.Create(&trans[i])
 		}
 	}
@@ -439,6 +441,11 @@ func (storage *Storage) browserTopBlockHeight() uint64 {
 	}
 	return 0
 }
+func (storage *Storage) GetTopblock() uint64 {
+	var maxHeight uint64
+	storage.db.Table("blocks").Select("max(height) as height").Row().Scan(&maxHeight)
+	return maxHeight
+}
 
 func (storage *Storage) DeleteForkblock(preHeight uint64, localHeight uint64) (err error) {
 
@@ -447,14 +454,12 @@ func (storage *Storage) DeleteForkblock(preHeight uint64, localHeight uint64) (e
 			fmt.Println(err) // 这里的err其实就是panic传入的内容
 		}
 	}()
-	var maxHeight uint64
-	storage.db.Table("accounts").Select("max(height) as height").Row().Scan(&maxHeight)
-	if maxHeight <= preHeight {
-		return nil
-	}
-	go storage.db.Where("height > ? and height < ?", preHeight, localHeight).Delete(models.Block{})
-	go storage.db.Where("block_height > ? and block_height < ?", preHeight, localHeight).Delete(models.Transaction{})
-	go storage.db.Where("block_height > ? and block_height < ?", preHeight, localHeight).Delete(models.Receipt{})
+
+	trans := make([]*models.Transaction, 0, 0)
+	receipts := make([]*models.Receipt, 0, 0)
+	go storage.db.Where("height > ? and height < ?", preHeight, localHeight).Delete(&models.Block{})
+	go storage.db.Unscoped().Where("block_height > ? and block_height < ?", preHeight, localHeight).Delete(trans)
+	go storage.db.Unscoped().Where("block_height > ? and block_height < ?", preHeight, localHeight).Delete(receipts)
 
 	return err
 }

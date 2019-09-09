@@ -21,8 +21,8 @@ func TestDB2(t *testing.T) {
 			Variable: "block_reward.top_block_height",
 			SetBy:    "carrie.cxl",
 		}
-		server.storage.AddBlockRewardSystemconfig(sys)
-		fmt.Println("", bool)
+		//server.storage.add(sys)
+		fmt.Println("", bool, sys)
 	}
 
 }
