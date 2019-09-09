@@ -67,6 +67,10 @@ func (storage *Storage) Init(reset bool) {
 		return
 	}
 	storage.db = db
+	db.DropTable(&models.Block{})
+	db.DropTable(&models.Transaction{})
+	db.DropTable(&models.Receipt{})
+
 	if reset {
 		db.DropTable(&models.Account{})
 		db.DropTable(&models.Sys{})
