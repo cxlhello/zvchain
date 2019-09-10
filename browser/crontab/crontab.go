@@ -223,7 +223,10 @@ func (crontab *Crontab) Consume() {
 }
 
 func (crontab *Crontab) dataCompensationProcess(notifyHeight uint64, notifyPreHeight uint64) {
+	timenow := time.Now()
 	if crontab.isInited {
+		fmt.Println("[Storage]  dataCompensationProcess start: ", notifyHeight, notifyPreHeight)
+
 		dbMaxHeight := crontab.blockTopHeight
 		if dbMaxHeight > 0 && dbMaxHeight <= notifyPreHeight {
 			crontab.storage.DeleteForkblock(dbMaxHeight-1, dbMaxHeight+1)
@@ -231,6 +234,8 @@ func (crontab *Crontab) dataCompensationProcess(notifyHeight uint64, notifyPreHe
 		}
 		crontab.isInited = false
 	}
+	fmt.Println("[Storage]  dataCompensationProcess cost: ", time.Since(timenow))
+
 }
 
 //data Compensation
@@ -244,6 +249,8 @@ func (crontab *Crontab) dataCompensation(dbMaxHeight uint64, notifyPreHeight uin
 	} else {
 		crontab.blockTopHeight += 1
 	}
+	fmt.Println("[Storage]  dataCompensationProcess procee: ", crontab.blockTopHeight)
+
 	if crontab.blockTopHeight <= notifyPreHeight {
 		crontab.dataCompensation(crontab.blockTopHeight, notifyPreHeight)
 	}
