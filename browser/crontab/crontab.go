@@ -18,7 +18,8 @@ const checkInterval = time.Second * 10
 
 type Crontab struct {
 	storage           *mysql.Storage
-	blockHeight       uint64
+	blockRewardHeight uint64
+	blockTopHeight    uint64
 	page              uint64
 	maxid             uint
 	accountPrimaryId  uint64
@@ -36,14 +37,15 @@ type Crontab struct {
 
 func NewServer(dbAddr string, dbPort int, dbUser string, dbPassword string, reset bool) *Crontab {
 	server := &Crontab{
-		initdata: make(chan *models.ForkNotify, 100),
+		initdata: make(chan *models.ForkNotify, 1000),
 	}
 	server.storage = mysql.NewStorage(dbAddr, dbPort, dbUser, dbPassword, reset)
 	server.isInited = true
 	notify.BUS.Subscribe(notify.BlockAddSucc, server.OnBlockAddSuccess)
-	server.blockHeight = server.storage.TopBlockRewardHeight(mysql.Blockrewardtophight)
-	if server.blockHeight > 0 {
-		server.blockHeight += 1
+	server.blockRewardHeight = server.storage.TopBlockRewardHeight(mysql.Blockrewardtophight)
+	server.blockTopHeight = server.storage.GetTopblock()
+	if server.blockRewardHeight > 0 {
+		server.blockRewardHeight += 1
 	}
 	go server.loop()
 	return server
@@ -55,14 +57,13 @@ func (crontab *Crontab) loop() {
 	)
 	defer check.Stop()
 	go crontab.fetchPoolVotes()
-	//go crontab.fetchBlockRewards()
+	go crontab.fetchBlockRewards()
 	go crontab.Consume()
 	for {
 		select {
 		case <-check.C:
 			go crontab.fetchPoolVotes()
-			//go crontab.fetchBlockRewards()
-			//go crontab.Consume()
+			go crontab.fetchBlockRewards()
 		}
 	}
 }
@@ -95,7 +96,7 @@ func (crontab *Crontab) excutePoolVotes() {
 		if err != nil || db == nil {
 			return
 		}
-		db, err = core.BlockChainImpl.AccountDBAt(blockheader.Height)
+		db, err = core.BlockChainImpl.LatestAccountDB()
 		total := len(accountsPool) - 1
 		for num, pool := range accountsPool {
 			if num == total {
@@ -136,33 +137,27 @@ func (crontab *Crontab) excutePoolVotes() {
 
 func (crontab *Crontab) excuteBlockRewards() {
 	height, _ := crontab.storage.TopBlockHeight()
-	if crontab.blockHeight > height {
+	if crontab.blockRewardHeight > height {
 		return
 	}
 	topblock := core.BlockChainImpl.QueryTopBlock()
 	topheight := topblock.Height
-	rewards := crontab.rpcExplore.GetPreHightRewardByHeight(crontab.blockHeight)
-	fmt.Println("[crontab]  fetchBlockRewards height:", crontab.blockHeight, 0)
+	rewards := crontab.rpcExplore.GetPreHightRewardByHeight(crontab.blockRewardHeight)
+	fmt.Println("[crontab]  fetchBlockRewards height:", crontab.blockRewardHeight, 0)
 
 	if rewards != nil {
-		fmt.Println("[crontab]  fetchBlockRewards ObjectTojson:", util.ObjectTojson(rewards), crontab.blockHeight)
-
 		accounts := crontab.transfer.RewardsToAccounts(rewards)
-
 		if crontab.storage.AddBlockRewardMysqlTransaction(accounts) {
-			crontab.blockHeight += 1
+			crontab.blockRewardHeight += 1
 		}
 		crontab.excuteBlockRewards()
-
-	} else if crontab.blockHeight < topheight {
-		crontab.blockHeight += 1
-
-		fmt.Println("[crontab]  fetchBlockRewards rewards nil:", crontab.blockHeight, rewards)
-
+	} else if crontab.blockRewardHeight < topheight {
+		crontab.blockRewardHeight += 1
+		fmt.Println("[crontab]  fetchBlockRewards rewards nil:", crontab.blockRewardHeight, rewards)
 	}
 }
 
-func (server *Crontab) fetchBlock(localHeight uint64, pre uint64) {
+func (server *Crontab) consumeBlock(localHeight uint64, pre uint64) {
 	fmt.Println("[server]  fetchBlock height:", localHeight)
 	var maxHeight uint64
 	maxHeight = server.storage.GetTopblock()
@@ -184,8 +179,6 @@ func (server *Crontab) fetchBlock(localHeight uint64, pre uint64) {
 			}
 			server.storage.AddReceipts(blockDetail.Receipts)
 
-			//server.blockHeight = blockDetail.Block.Height + 1
-			//go server.fetchBlocks()
 		}
 		if maxHeight > pre {
 			server.storage.DeleteForkblock(pre, localHeight)
@@ -198,21 +191,7 @@ func (server *Crontab) fetchBlock(localHeight uint64, pre uint64) {
 func (crontab *Crontab) OnBlockAddSuccess(message notify.Message) error {
 	block := message.GetData().(*types.Block)
 	bh := block.Header
-	if crontab.isInited {
-		maxHeight := crontab.storage.GetTopblock()
-		if maxHeight > 0 && bh.Height > maxHeight+1 {
-			for i := maxHeight; i < bh.Height; i++ {
-				blockceil := core.BlockChainImpl.QueryBlockCeil(i)
-				preBlockceil := core.BlockChainImpl.QueryBlockByHash(blockceil.Header.PreHash)
-				produce := &models.ForkNotify{
-					PreHeight:   preBlockceil.Header.Height,
-					LocalHeight: blockceil.Header.Height,
-				}
-				go crontab.Produce(produce)
-			}
-		}
-		crontab.isInited = false
-	}
+
 	preHash := bh.PreHash
 	preBlock := core.BlockChainImpl.QueryBlockByHash(preHash)
 	preHight := preBlock.Header.Height
@@ -229,17 +208,44 @@ func (crontab *Crontab) Produce(data *models.ForkNotify) {
 	crontab.initdata <- data
 	fmt.Println("for Produce", util.ObjectTojson(data))
 }
+
 func (crontab *Crontab) Consume() {
-	if !atomic.CompareAndSwapInt32(&crontab.isFetchingConsume, 0, 1) {
-		return
-	}
+
 	var ok = true
 	for ok {
 		select {
 		case data := <-crontab.initdata:
-			crontab.fetchBlock(data.LocalHeight, data.PreHeight)
+			crontab.dataCompensationProcess(data.LocalHeight, data.PreHeight)
+			crontab.consumeBlock(data.LocalHeight, data.PreHeight)
 			fmt.Println("for Consume", util.ObjectTojson(data))
 		}
 	}
-	atomic.CompareAndSwapInt32(&crontab.isFetchingConsume, 1, 0)
+}
+
+func (crontab *Crontab) dataCompensationProcess(notifyHeight uint64, notifyPreHeight uint64) {
+	if crontab.isInited {
+		dbMaxHeight := crontab.blockTopHeight
+		if dbMaxHeight > 0 && dbMaxHeight <= notifyPreHeight {
+			crontab.storage.DeleteForkblock(dbMaxHeight-1, dbMaxHeight+1)
+			crontab.dataCompensation(dbMaxHeight, notifyPreHeight)
+		}
+		crontab.isInited = false
+	}
+}
+
+//data Compensation
+func (crontab *Crontab) dataCompensation(dbMaxHeight uint64, notifyPreHeight uint64) {
+	blockceil := core.BlockChainImpl.QueryBlockCeil(dbMaxHeight)
+	if blockceil != nil {
+		preBlockceil := core.BlockChainImpl.QueryBlockByHash(blockceil.Header.PreHash)
+		crontab.consumeBlock(blockceil.Header.Height, preBlockceil.Header.Height)
+		fmt.Println("for dataCompensation,", blockceil.Header.Height, ",", preBlockceil.Header.Height)
+		crontab.blockTopHeight = blockceil.Header.Height + 1
+	} else {
+		crontab.blockTopHeight += 1
+	}
+	if crontab.blockTopHeight <= notifyPreHeight {
+		crontab.dataCompensation(crontab.blockTopHeight, notifyPreHeight)
+	}
+
 }

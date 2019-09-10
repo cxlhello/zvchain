@@ -105,6 +105,7 @@ type TempTransaction struct {
 	Hash     common.Hash `json:"hash"`
 
 	ExtraData string `json:"extra_data"`
+	Status    uint   `json:"status"`
 }
 
 type Transaction struct {
@@ -124,6 +125,7 @@ type Transaction struct {
 	Hash      string   `json:"hash" gorm:"index"`
 	Receipt   *Receipt `json:"receipt" gorm:"-"`
 	ExtraData string   `json:"extra_data" gorm:"type:TEXT;size:65000"`
+	Status    uint     `json:"status" gorm:"index"`
 }
 
 type Receipt struct {

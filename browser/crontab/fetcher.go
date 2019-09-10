@@ -36,6 +36,7 @@ func (api *Fetcher) ExplorerBlockDetail(height uint64) (*models.BlockDetail, err
 		if wrapper != nil {
 			modelreceipt := convertReceipt(wrapper)
 			receipts[i] = modelreceipt
+			tx.Status = modelreceipt.Status
 		}
 	}
 
@@ -89,6 +90,7 @@ func (api *Fetcher) ConvertTempTransactionToTransaction(temp *models.TempTransac
 		GasPrice:  temp.GasPrice,
 		Hash:      temp.Hash.Hex(),
 		ExtraData: temp.ExtraData,
+		Status:    temp.Status,
 	}
 	if temp.Source != nil {
 		tran.Source = temp.Source.AddrPrefixString()

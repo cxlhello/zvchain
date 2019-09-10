@@ -67,16 +67,14 @@ func (storage *Storage) Init(reset bool) {
 		return
 	}
 	storage.db = db
-	db.DropTable(&models.Block{})
-	db.DropTable(&models.Transaction{})
-	db.DropTable(&models.Receipt{})
-
 	if reset {
 		db.DropTable(&models.Account{})
 		db.DropTable(&models.Sys{})
 		db.DropTable(&models.PoolStake{})
 		db.DropTable(&models.Group{})
-
+		db.DropTable(&models.Block{})
+		db.DropTable(&models.Transaction{})
+		db.DropTable(&models.Receipt{})
 	}
 	if !db.HasTable(&models.Account{}) {
 		db.CreateTable(&models.Account{})

@@ -452,12 +452,11 @@ func (storage *Storage) DeleteForkblock(preHeight uint64, localHeight uint64) (e
 			fmt.Println(err) // 这里的err其实就是panic传入的内容
 		}
 	}()
-
-	trans := make([]*models.Transaction, 0, 0)
-	receipts := make([]*models.Receipt, 0, 0)
-	go storage.db.Where("height > ? and height < ?", preHeight, localHeight).Delete(&models.Block{})
-	go storage.db.Unscoped().Where("block_height > ? and block_height < ?", preHeight, localHeight).Delete(trans)
-	go storage.db.Unscoped().Where("block_height > ? and block_height < ?", preHeight, localHeight).Delete(receipts)
-
+	blockSql := fmt.Sprintf("DELETE  FROM blocks WHERE height > %d and height < %d", preHeight, localHeight)
+	transactionSql := fmt.Sprintf("DELETE  FROM transactions WHERE block_height > %d and block_height < %d", preHeight, localHeight)
+	receiptSql := fmt.Sprintf("DELETE  FROM receipts WHERE block_height > %d and block_height < %d", preHeight, localHeight)
+	storage.db.Debug().Exec(blockSql)
+	storage.db.Exec(transactionSql)
+	storage.db.Exec(receiptSql)
 	return err
 }
