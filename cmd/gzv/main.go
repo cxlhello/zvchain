@@ -46,7 +46,7 @@ func NewBrowserDBInit() {
 
 	flag.BoolVar(&help, "h", false, "help")
 	flag.BoolVar(&reset, "reset", false, "reset database")
-	flag.StringVar(&browerdbaddr, "browerdbaddr", "47.104.189.61", "database address")
+	flag.StringVar(&browerdbaddr, "browerdbaddr", "localhost", "database address")
 	flag.StringVar(&rpcAddr, "rpcaddr", "localhost", "RPC address")
 	flag.IntVar(&dbPort, "dbport", 3306, "database port")
 	flag.IntVar(&rpcPort, "rpcport", 8101, "RPC port")
@@ -58,6 +58,6 @@ func NewBrowserDBInit() {
 		flag.Usage()
 	}
 	fmt.Println("browserdbmmanagement flags:", browerdbaddr, dbPort, dbUser, dbPassword, reset)
-	browser.NewDBMmanagement(browerdbaddr, dbPort, dbUser, dbPassword, reset)
+	browser.NewDBMmanagement(browerdbaddr, dbPort, dbUser, dbPassword, true)
 	crontab.NewServer(browerdbaddr, dbPort, dbUser, dbPassword, reset)
 }
