@@ -17,10 +17,7 @@ package cli
 
 import (
 	"errors"
-	"flag"
 	"fmt"
-	"github.com/zvchain/zvchain/browser"
-	"github.com/zvchain/zvchain/browser/crontab"
 	"github.com/zvchain/zvchain/log"
 	"github.com/zvchain/zvchain/middleware"
 	"os"
@@ -397,7 +394,6 @@ func (gzv *Gzv) fullInit() error {
 	if cfg.enableMonitor || common.GlobalConf.GetBool(Section, "enable_monitor", false) {
 		monitor.InitLogService(id)
 	}
-	NewBrowserDBMmanagement()
 	return nil
 }
 
@@ -410,31 +406,6 @@ func ShowPubKeyInfo(info model.SelfMinerDO, id string) {
 	} else {
 		log.DefaultLogger.Infof("pubkey_info json: %s\n", js)
 	}
-}
-
-func NewBrowserDBMmanagement() {
-	var browerdbaddr, rpcAddr string
-	var dbPort, rpcPort int
-	var dbUser, dbPassword string
-	var help bool
-	var reset bool
-
-	flag.BoolVar(&help, "h", false, "help")
-	flag.BoolVar(&reset, "reset", false, "reset database")
-	flag.StringVar(&browerdbaddr, "browerdbaddr", "47.104.189.61", "database address")
-	flag.StringVar(&rpcAddr, "rpcaddr", "localhost", "RPC address")
-	flag.IntVar(&dbPort, "dbport", 3306, "database port")
-	flag.IntVar(&rpcPort, "rpcport", 8101, "RPC port")
-	flag.StringVar(&dbUser, "dbuser", "root", "database user")
-	flag.StringVar(&dbPassword, "browerdbpw", "TASchain@1003", "database password")
-	flag.Parse()
-
-	if help {
-		flag.Usage()
-	}
-	fmt.Println("browserdbmmanagement flags:", browerdbaddr, dbPort, dbUser, dbPassword, reset)
-	browser.NewDBMmanagement(browerdbaddr, dbPort, dbUser, dbPassword, reset)
-	crontab.NewServer(browerdbaddr, dbPort, dbUser, dbPassword, reset)
 }
 
 func NewGzv() *Gzv {

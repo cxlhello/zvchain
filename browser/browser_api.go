@@ -90,12 +90,12 @@ func (tm *DBMmanagement) fetchAccounts() {
 
 func (tm *DBMmanagement) excuteAccounts() {
 
-	//blockheader := core.BlockChainImpl.CheckPointAt(mysql.CheckpointMaxHeight)
+	blockheader := core.BlockChainImpl.LatestCheckPoint()
 
-	//if tm.blockHeight > blockheader.Height {
-	//	return
-	//}
-	fmt.Println("[DBMmanagement]  fetchBlock height:", tm.blockHeight, 0)
+	if tm.blockHeight > blockheader.Height {
+		return
+	}
+	fmt.Println("[DBMmanagement]  fetchBlock height:", tm.blockHeight, "CheckPointHeight", blockheader.Height)
 	chain := core.BlockChainImpl
 	block := chain.QueryBlockCeil(tm.blockHeight)
 
@@ -474,7 +474,6 @@ func GetMinerInfo(addr string, height uint64) (map[string]*MortGage, string) {
 			}
 		}
 		fmt.Println("GetMinerInfo", proposalInfo.Stake, ",", selfStakecount, ",", address)
-
 		other := &MortGage{
 			Stake:       mort.Stake - uint64(common.RA2TAS(selfStakecount)),
 			ApplyHeight: 0,

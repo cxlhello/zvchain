@@ -90,7 +90,7 @@ func (crontab *Crontab) fetchBlockRewards() {
 func (crontab *Crontab) excutePoolVotes() {
 	accountsPool := crontab.storage.GetAccountByRoletype(crontab.maxid, types.MinerPool)
 	if accountsPool != nil && len(accountsPool) > 0 {
-		blockheader := core.BlockChainImpl.CheckPointAt(mysql.CheckpointMaxHeight)
+		blockheader := core.BlockChainImpl.LatestCheckPoint()
 		var db types.AccountDB
 		var err error
 		if err != nil || db == nil {

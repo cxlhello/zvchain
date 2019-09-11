@@ -15,7 +15,10 @@
 
 package util
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 type Set struct {
 	// struct为结构体类型的变量
@@ -58,6 +61,6 @@ func ObjectTojson(ob interface{}) string {
 		return ""
 	}
 	result, _ := json.Marshal(ob)
-	return string(result)
+	return strings.Trim(string(result), "\"")
 
 }

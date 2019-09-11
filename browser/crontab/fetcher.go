@@ -82,7 +82,6 @@ func convertBlockHeader(b *types.Block) *models.Block {
 func (api *Fetcher) ConvertTempTransactionToTransaction(temp *models.TempTransaction) *models.Transaction {
 
 	tran := &models.Transaction{
-		Data:      util.ObjectTojson(temp.Data),
 		Value:     temp.Value,
 		Nonce:     temp.Nonce,
 		Type:      int32(temp.Type),
@@ -92,6 +91,7 @@ func (api *Fetcher) ConvertTempTransactionToTransaction(temp *models.TempTransac
 		ExtraData: temp.ExtraData,
 		Status:    temp.Status,
 	}
+	tran.Data = util.ObjectTojson(temp.Data)
 	if temp.Source != nil {
 		tran.Source = temp.Source.AddrPrefixString()
 	}
