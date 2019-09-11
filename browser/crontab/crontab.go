@@ -90,7 +90,7 @@ func (crontab *Crontab) fetchBlockRewards() {
 func (crontab *Crontab) excutePoolVotes() {
 	accountsPool := crontab.storage.GetAccountByRoletype(crontab.maxid, types.MinerPool)
 	if accountsPool != nil && len(accountsPool) > 0 {
-		blockheader := core.BlockChainImpl.LatestCheckPoint()
+		//blockheader := core.BlockChainImpl.LatestCheckPoint()
 		var db types.AccountDB
 		var err error
 		if err != nil || db == nil {
@@ -103,7 +103,7 @@ func (crontab *Crontab) excutePoolVotes() {
 				crontab.maxid = pool.ID
 			}
 			//pool to be normal miner
-			proposalInfo := core.MinerManagerImpl.GetMiner(common.StringToAddress(pool.Address), types.MinerTypeProposal, blockheader.Height)
+			proposalInfo := core.MinerManagerImpl.GetLatestMiner(common.StringToAddress(pool.Address), types.MinerTypeProposal)
 			attrs := make(map[string]interface{})
 			if uint64(proposalInfo.Type) != pool.RoleType {
 				attrs["role_type"] = types.InValidMinerPool

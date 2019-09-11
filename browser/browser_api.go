@@ -90,12 +90,11 @@ func (tm *DBMmanagement) fetchAccounts() {
 
 func (tm *DBMmanagement) excuteAccounts() {
 
-	blockheader := core.BlockChainImpl.LatestCheckPoint()
-
-	if tm.blockHeight > blockheader.Height {
+	topHeight := core.BlockChainImpl.Height()
+	if tm.blockHeight > topHeight-100 {
 		return
 	}
-	fmt.Println("[DBMmanagement]  fetchBlock height:", tm.blockHeight, "CheckPointHeight", blockheader.Height)
+	fmt.Println("[DBMmanagement]  fetchBlock height:", tm.blockHeight, "CheckPointHeight", topHeight)
 	chain := core.BlockChainImpl
 	block := chain.QueryBlockCeil(tm.blockHeight)
 
