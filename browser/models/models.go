@@ -92,6 +92,28 @@ type Block struct {
 	LoadVerify      bool                   `json:"load_verify"`
 }
 
+type Verification struct {
+	gorm.Model
+	BlockHash   string `json:"block_hash" gorm:"index"`
+	BlockHeight uint64 `json:"block_height" gorm:"index"`
+	NodeId      string `json:"node_id" gorm:"index"`
+	Value       uint64 `json:"value"`
+	Type        uint64 `json:"type"`
+}
+
+type Reward struct {
+	gorm.Model
+	BlockHash    string    `json:"block_hash" gorm:"index"`
+	BlockHeight  uint64    `json:"block_height" gorm:"index"`
+	RewardHeight uint64    `json:"reward_height" gorm:"index"`
+	CurTime      time.Time `json:"cur_time" gorm:"index"`
+	NodeId       string    `json:"node_id" gorm:"index"`
+	Value        uint64    `json:"value"`
+	Type         uint64    `json:"type"`
+	Stake        uint64    `json:"stake"`
+	RoleType     uint64    `json:"role_type"`
+}
+
 type TempTransaction struct {
 	Data   []byte          `json:"data"`
 	Value  float64         `json:"value"`

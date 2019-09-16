@@ -3,6 +3,7 @@ package browser
 import (
 	"fmt"
 	"github.com/jinzhu/gorm"
+	common2 "github.com/zvchain/zvchain/browser/common"
 	"github.com/zvchain/zvchain/browser/models"
 	"github.com/zvchain/zvchain/browser/mysql"
 	"github.com/zvchain/zvchain/browser/util"
@@ -26,15 +27,6 @@ const (
 
 //var AddressCacheList map[string]uint64
 
-type MortGage struct {
-	Stake                uint64             `json:"stake"`
-	ApplyHeight          uint64             `json:"apply_height"`
-	Type                 string             `json:"type"`
-	Status               types.MinerStatus  `json:"miner_status"`
-	StatusUpdateHeight   uint64             `json:"status_update_height"`
-	Identity             types.NodeIdentity `json:"identity"`
-	IdentityUpdateHeight uint64             `json:"identity_update_height"`
-}
 type DBMmanagement struct {
 	sync.Mutex
 	blockHeight        uint64
@@ -47,6 +39,7 @@ type DBMmanagement struct {
 	isFetchingWorkGroups    bool
 	isFetchingPrepareGroups bool
 	isFetchingDismissGroups bool
+	fetcher                 *common2.Fetcher
 }
 
 func NewDBMmanagement(dbAddr string, dbPort int, dbUser string, dbPassword string, reset bool) *DBMmanagement {
@@ -445,12 +438,12 @@ func generateStakefromByTransaction(tm *DBMmanagement, stakelist map[string]map[
 
 }
 
-func GetMinerInfo(addr string, height uint64) (map[string]*MortGage, string) {
+func GetMinerInfo(addr string, height uint64) (map[string]*common2.MortGage, string) {
 	if !common.ValidateAddress(strings.TrimSpace(addr)) {
 		return nil, ""
 	}
 
-	morts := make(map[string]*MortGage)
+	morts := make(map[string]*common2.MortGage)
 	address := common.StringToAddress(addr)
 	var proposalInfo *types.Miner
 	//if height == 0 {
@@ -461,7 +454,7 @@ func GetMinerInfo(addr string, height uint64) (map[string]*MortGage, string) {
 	//}
 	var stakefrom = ""
 	if proposalInfo != nil {
-		mort := NewMortGageFromMiner(proposalInfo)
+		mort := common2.NewMortGageFromMiner(proposalInfo)
 		morts["proposal"] = mort
 		//morts = append(morts, mort)
 		//get stakeinfo by miners themselves
@@ -473,7 +466,7 @@ func GetMinerInfo(addr string, height uint64) (map[string]*MortGage, string) {
 			}
 		}
 		fmt.Println("GetMinerInfo", proposalInfo.Stake, ",", selfStakecount, ",", address)
-		other := &MortGage{
+		other := &common2.MortGage{
 			Stake:       mort.Stake - uint64(common.RA2TAS(selfStakecount)),
 			ApplyHeight: 0,
 			Type:        "proposal node",
@@ -491,7 +484,7 @@ func GetMinerInfo(addr string, height uint64) (map[string]*MortGage, string) {
 	}
 	verifierInfo := core.MinerManagerImpl.GetLatestMiner(address, types.MinerTypeVerify)
 	if verifierInfo != nil {
-		morts["verify"] = NewMortGageFromMiner(verifierInfo)
+		morts["verify"] = common2.NewMortGageFromMiner(verifierInfo)
 		if stakefrom == "" {
 			stakefrom = addr
 		}
@@ -514,37 +507,6 @@ func GetStakeFrom(address common.Address) string {
 	return strings.Trim(stakeFrom, ",")
 }
 
-func NewMortGageFromMiner(miner *types.Miner) *MortGage {
-	t := "proposal node"
-	if miner.IsVerifyRole() {
-		t = "verify node"
-	}
-	status := types.MinerStatusPrepare
-	if miner.IsActive() {
-		status = types.MinerStatusActive
-	} else if miner.IsFrozen() {
-		status = types.MinerStatusFrozen
-	}
-
-	i := types.MinerNormal
-	if miner.IsMinerPool() {
-		i = types.MinerPool
-	} else if miner.IsInvalidMinerPool() {
-		i = types.InValidMinerPool
-	} else if miner.IsGuard() {
-		i = types.MinerGuard
-	}
-	mg := &MortGage{
-		Stake:                uint64(common.RA2TAS(miner.Stake)),
-		ApplyHeight:          miner.ApplyHeight,
-		Type:                 t,
-		Status:               status,
-		StatusUpdateHeight:   miner.StatusUpdateHeight,
-		Identity:             i,
-		IdentityUpdateHeight: miner.IdentityUpdateHeight,
-	}
-	return mg
-}
 func (tm *DBMmanagement) UpdateAccountStake(account *models.Account, height uint64) {
 	if account == nil {
 		return
@@ -570,6 +532,7 @@ func (tm *DBMmanagement) UpdateAccountStake(account *models.Account, height uint
 		tm.storage.UpdateAccountByColumn(account, mapcolumn)
 	}
 }
+
 func (tm *DBMmanagement) GetGroups() bool {
 	rpcAddr := "0.0.0.0"
 	rpcPort := 8101

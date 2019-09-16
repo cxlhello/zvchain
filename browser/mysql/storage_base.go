@@ -74,6 +74,8 @@ func (storage *Storage) Init(reset bool) {
 		db.DropTable(&models.Block{})
 		db.DropTable(&models.Transaction{})
 		db.DropTable(&models.Receipt{})
+		db.DropTable(&models.Reward{})
+
 	}
 	if !db.HasTable(&models.Account{}) {
 		db.CreateTable(&models.Account{})
@@ -95,6 +97,9 @@ func (storage *Storage) Init(reset bool) {
 	}
 	if !db.HasTable(&models.Receipt{}) {
 		db.CreateTable(&models.Receipt{})
+	}
+	if !db.HasTable(&models.Reward{}) {
+		db.CreateTable(&models.Reward{})
 	}
 
 }
@@ -131,5 +136,64 @@ func (storage *Storage) AddObjects(object interface{}) bool {
 	tx.Create(object)
 	tx.Commit()
 	fmt.Println("[Storage]  objects cost: ", time.Since(timeBegin), "，len :")
+	return true
+}
+
+func (storage *Storage) AddLoadVerifiedCount(block *models.Block) bool {
+	//fmt.Println("[Storage] add Verification ")
+	if storage.db == nil {
+		fmt.Println("[Storage] storage.db == nil")
+		return false
+	}
+	block.LoadVerifyCount += 1
+	storage.db.Model(&block).Updates(block)
+	return true
+}
+func (storage *Storage) AddVerifications(verifications []*models.Verification) bool {
+	if storage.db == nil {
+		fmt.Println("[Storage] storage.db == nil")
+		return false
+	}
+	timeBegin := time.Now()
+	tx := storage.db.Begin()
+	for i := 0; i < len(verifications); i++ {
+		//fmt.Println("[Storage] add verification:",verifications[i])
+		if verifications[i] != nil {
+			tx.Create(&verifications[i])
+		}
+	}
+	tx.Commit()
+	fmt.Println("[Storage]  AddVerifications cost: ", time.Since(timeBegin), "，len :", len(verifications))
+	return true
+}
+
+func (storage *Storage) AddRewards(verifications []*models.Reward) bool {
+	if storage.db == nil {
+		fmt.Println("[Storage] storage.db == nil")
+		return false
+	}
+	if len(verifications) < 1 {
+		return false
+	}
+	timeBegin := time.Now()
+	tx := storage.db.Begin()
+	for i := 0; i < len(verifications); i++ {
+		//fmt.Println("[Storage] add verification:",verifications[i])
+		if verifications[i] != nil {
+			tx.Create(&verifications[i])
+		}
+	}
+	tx.Commit()
+	fmt.Println("[Storage]  AddVerifications cost: ", time.Since(timeBegin), "，len :", len(verifications))
+	return true
+}
+func (storage *Storage) SetLoadVerified(block *models.Block) bool {
+	//fmt.Println("[Storage] add Verification ")
+	if storage.db == nil {
+		fmt.Println("[Storage] storage.db == nil")
+		return false
+	}
+	block.LoadVerify = true
+	storage.db.Model(&block).Where("hash = ?", block.Hash).Updates(block)
 	return true
 }

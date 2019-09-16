@@ -1,21 +1,27 @@
 package crontab
 
 import (
+	common2 "github.com/zvchain/zvchain/browser/common"
+	"github.com/zvchain/zvchain/browser/models"
 	"github.com/zvchain/zvchain/common"
 	"github.com/zvchain/zvchain/consensus/groupsig"
 	"github.com/zvchain/zvchain/consensus/mediator"
 	"github.com/zvchain/zvchain/core"
 	"github.com/zvchain/zvchain/middleware/types"
+	"time"
 )
 
 type Explore struct{}
 
 type ExploreBlockReward struct {
-	ProposalID           string            `json:"proposal_id"`
-	ProposalReward       uint64            `json:"proposal_reward"`
-	ProposalGasFeeReward uint64            `json:"proposal_gas_fee_reward"`
-	VerifierReward       RewardTransaction `json:"verifier_reward"`
-	VerifierGasFeeReward uint64            `json:"verifier_gas_fee_reward"`
+	BlockHash            string
+	BlockHeight          uint64
+	ProposalID           string             `json:"proposal_id"`
+	ProposalReward       uint64             `json:"proposal_reward"`
+	ProposalGasFeeReward uint64             `json:"proposal_gas_fee_reward"`
+	CurTime              time.Time          `json:"cur_time" gorm:"index"`
+	VerifierReward       *RewardTransaction `json:"verifier_reward"`
+	VerifierGasFeeReward uint64             `json:"verifier_gas_fee_reward"`
 }
 
 type RewardTransaction struct {
@@ -43,6 +49,9 @@ func (api *Explore) GetPreHightRewardByHeight(height uint64) []*ExploreBlockRewa
 				block := chain.QueryBlockByHash(common.BytesToHash(tx.Data))
 				reward := api.GetRewardByBlock(block)
 				if reward != nil {
+					reward.BlockHeight = block.Header.Height
+					reward.BlockHash = block.Header.Hash.Hex()
+					reward.CurTime = block.Header.CurTime.Local()
 					exploreBlockReward = append(exploreBlockReward, reward)
 				}
 			}
@@ -50,6 +59,17 @@ func (api *Explore) GetPreHightRewardByHeight(height uint64) []*ExploreBlockRewa
 	}
 	return exploreBlockReward
 
+}
+
+func (api *Explore) ExplorerGroupsAfter(height uint64) []*models.Group {
+	groups := core.GroupManagerImpl.GroupsAfter(height)
+
+	ret := make([]*models.Group, 0)
+	for _, g := range groups {
+		group := common2.ConvertGroup(g)
+		ret = append(ret, group)
+	}
+	return ret
 }
 func (api *Explore) GetRewardByBlock(b *types.Block) *ExploreBlockReward {
 	chain := core.BlockChainImpl
@@ -81,7 +101,7 @@ func (api *Explore) GetRewardByBlock(b *types.Block) *ExploreBlockReward {
 	if rewardTx := chain.GetRewardManager().GetRewardTransactionByBlockHash(bh.Hash); rewardTx != nil {
 		genReward := convertRewardTransaction1(rewardTx)
 		genReward.Success = true
-		ret.VerifierReward = *genReward
+		ret.VerifierReward = genReward
 	}
 	return ret
 }

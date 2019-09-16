@@ -1,4 +1,4 @@
-package crontab
+package common
 
 import (
 	"encoding/base64"
@@ -12,6 +12,24 @@ import (
 )
 
 type Fetcher struct {
+}
+type MortGage struct {
+	Stake                uint64             `json:"stake"`
+	ApplyHeight          uint64             `json:"apply_height"`
+	Type                 string             `json:"type"`
+	Status               types.MinerStatus  `json:"miner_status"`
+	StatusUpdateHeight   uint64             `json:"status_update_height"`
+	Identity             types.NodeIdentity `json:"identity"`
+	IdentityUpdateHeight uint64             `json:"identity_update_height"`
+}
+type Group struct {
+	Seed          common.Hash `json:"id"`
+	BeginHeight   uint64      `json:"begin_height"`
+	DismissHeight uint64      `json:"dismiss_height"`
+	Threshold     int32       `json:"threshold"`
+	Members       []string    `json:"members"`
+	MemSize       int         `json:"mem_size"`
+	GroupHeight   uint64      `json:"group_height"`
 }
 
 func (api *Fetcher) ExplorerBlockDetail(height uint64) (*models.BlockDetail, error) {
@@ -61,6 +79,48 @@ func convertReceipt(receipt *types.Receipt) *models.Receipt {
 
 }
 
+func ConvertGroup(g types.GroupI) *models.Group {
+
+	mems := make([]string, 0)
+	for _, mem := range g.Members() {
+		memberStr := groupsig.DeserializeID(mem.ID()).GetAddrString()
+		mems = append(mems, memberStr)
+	}
+	gh := g.Header()
+
+	data := &Group{
+		Seed:          gh.Seed(),
+		BeginHeight:   gh.WorkHeight(),
+		DismissHeight: gh.DismissHeight(),
+		Threshold:     int32(gh.Threshold()),
+		Members:       mems,
+		MemSize:       len(mems),
+		GroupHeight:   gh.GroupHeight(),
+	}
+	return dataToGroup(data)
+
+}
+
+func dataToGroup(data *Group) *models.Group {
+
+	group := &models.Group{}
+	group.Id = data.Seed.Hex()
+	group.WorkHeight = data.BeginHeight
+	group.DismissHeight = data.DismissHeight
+	group.Threshold = uint64(data.Threshold)
+	group.Height = data.GroupHeight
+
+	members := data.Members
+	group.Members = make([]string, 0)
+	group.MemberCount = uint64(len(members))
+	for _, midStr := range members {
+		if len(midStr) > 0 {
+			group.MembersStr = group.MembersStr + midStr + "\r\n"
+		}
+	}
+	return group
+}
+
 func convertBlockHeader(b *types.Block) *models.Block {
 	bh := b.Header
 	block := &models.Block{
@@ -78,7 +138,37 @@ func convertBlockHeader(b *types.Block) *models.Block {
 	}
 	return block
 }
+func NewMortGageFromMiner(miner *types.Miner) *MortGage {
+	t := "proposal node"
+	if miner.IsVerifyRole() {
+		t = "verify node"
+	}
+	status := types.MinerStatusPrepare
+	if miner.IsActive() {
+		status = types.MinerStatusActive
+	} else if miner.IsFrozen() {
+		status = types.MinerStatusFrozen
+	}
 
+	i := types.MinerNormal
+	if miner.IsMinerPool() {
+		i = types.MinerPool
+	} else if miner.IsInvalidMinerPool() {
+		i = types.InValidMinerPool
+	} else if miner.IsGuard() {
+		i = types.MinerGuard
+	}
+	mg := &MortGage{
+		Stake:                uint64(common.RA2TAS(miner.Stake)),
+		ApplyHeight:          miner.ApplyHeight,
+		Type:                 t,
+		Status:               status,
+		StatusUpdateHeight:   miner.StatusUpdateHeight,
+		Identity:             i,
+		IdentityUpdateHeight: miner.IdentityUpdateHeight,
+	}
+	return mg
+}
 func (api *Fetcher) ConvertTempTransactionToTransaction(temp *models.TempTransaction) *models.Transaction {
 
 	tran := &models.Transaction{

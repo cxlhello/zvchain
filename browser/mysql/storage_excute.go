@@ -439,6 +439,19 @@ func (storage *Storage) browserTopBlockHeight() uint64 {
 	}
 	return 0
 }
+
+func (storage *Storage) RewardTopBlockHeight() (uint64, uint64) {
+	if storage.db == nil {
+		return 0, 0
+	}
+	rewards := make([]models.Reward, 0, 0)
+	storage.db.Limit(1).Order("reward_height desc").Find(&rewards)
+	if len(rewards) > 0 {
+
+		return rewards[0].BlockHeight, rewards[0].RewardHeight
+	}
+	return 0, 0
+}
 func (storage *Storage) GetTopblock() uint64 {
 	var maxHeight uint64
 	storage.db.Table("blocks").Select("max(height) as height").Row().Scan(&maxHeight)
@@ -458,5 +471,18 @@ func (storage *Storage) DeleteForkblock(preHeight uint64, localHeight uint64) (e
 	storage.db.Debug().Exec(blockSql)
 	storage.db.Exec(transactionSql)
 	storage.db.Exec(receiptSql)
+	return err
+}
+
+func (storage *Storage) DeleteForkReward(preHeight uint64, localHeight uint64) (err error) {
+
+	defer func() { // 必须要先声明defer，否则不能捕获到panic异常
+		if err := recover(); err != nil {
+			fmt.Println(err) // 这里的err其实就是panic传入的内容
+		}
+	}()
+
+	verifySql := fmt.Sprintf("DELETE  FROM rewards WHERE reward_height > %d and reward_height < %d", preHeight, localHeight)
+	storage.db.Exec(verifySql)
 	return err
 }
