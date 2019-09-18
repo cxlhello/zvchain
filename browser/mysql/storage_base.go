@@ -34,11 +34,11 @@ type Storage struct {
 	rpcAddrStr            string
 	topBlockHigh          uint64
 	topGroupHigh          uint64
-	accounts              []*models.Account
+	accounts              []*models.AccountList
 	topbrowserBlockHeight uint64
 }
 
-func NewStorage(dbAddr string, dbPort int, dbUser string, dbPassword string, reset bool) *Storage {
+func NewStorage(dbAddr string, dbPort int, dbUser string, dbPassword string, reset bool, resetcrontab bool) *Storage {
 
 	storage := &Storage{
 		dbAddr:     dbAddr,
@@ -46,11 +46,11 @@ func NewStorage(dbAddr string, dbPort int, dbUser string, dbPassword string, res
 		dbUser:     dbUser,
 		dbPassword: dbPassword,
 	}
-	storage.Init(reset)
+	storage.Init(reset, resetcrontab)
 	return storage
 }
 
-func (storage *Storage) Init(reset bool) {
+func (storage *Storage) Init(reset bool, resetcrontab bool) {
 	if storage.db != nil {
 		return
 	}
@@ -68,17 +68,20 @@ func (storage *Storage) Init(reset bool) {
 	}
 	storage.db = db
 	if reset {
-		db.DropTable(&models.Account{})
-		db.DropTable(&models.Sys{})
-		db.DropTable(&models.PoolStake{})
 		db.DropTable(&models.Block{})
 		db.DropTable(&models.Transaction{})
 		db.DropTable(&models.Receipt{})
 		db.DropTable(&models.Reward{})
-
 	}
-	if !db.HasTable(&models.Account{}) {
-		db.CreateTable(&models.Account{})
+
+	if resetcrontab {
+		db.DropTable(&models.AccountList{})
+		db.DropTable(&models.Sys{})
+		db.DropTable(&models.PoolStake{})
+		db.DropTable(&models.Group{})
+	}
+	if !db.HasTable(&models.AccountList{}) {
+		db.CreateTable(&models.AccountList{})
 	}
 	if !db.HasTable(&models.Sys{}) {
 		db.CreateTable(&models.Sys{})

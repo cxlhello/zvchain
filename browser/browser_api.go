@@ -42,9 +42,9 @@ type DBMmanagement struct {
 	fetcher                 *common2.Fetcher
 }
 
-func NewDBMmanagement(dbAddr string, dbPort int, dbUser string, dbPassword string, reset bool) *DBMmanagement {
+func NewDBMmanagement(dbAddr string, dbPort int, dbUser string, dbPassword string, reset bool, resetcrontab bool) *DBMmanagement {
 	tablMmanagement := &DBMmanagement{}
-	tablMmanagement.storage = mysql.NewStorage(dbAddr, dbPort, dbUser, dbPassword, reset)
+	tablMmanagement.storage = mysql.NewStorage(dbAddr, dbPort, dbUser, dbPassword, reset, resetcrontab)
 
 	tablMmanagement.blockHeight, _ = tablMmanagement.storage.TopBlockHeight()
 	tablMmanagement.groupHeight, _ = tablMmanagement.storage.TopGroupHeight()
@@ -107,32 +107,52 @@ func (tm *DBMmanagement) excuteAccounts() {
 						}
 					}
 				}
-				if tx.Source != nil && tx.Target != nil {
+				if tx.Source != nil {
 					//account list
 					if _, exists := AddressCacheList[tx.Source.AddrPrefixString()]; exists {
 						AddressCacheList[tx.Source.AddrPrefixString()] += 1
 					} else {
 						AddressCacheList[tx.Source.AddrPrefixString()] = 1
 					}
+
+					//if tx.Type == types.TransactionTypeStakeAdd || tx.Type == types.TransactionTypeStakeReduce{
+					var target string
+					if tx.Target != nil {
+						target = tx.Target.AddrPrefixString()
+						if _, exists := AddressCacheList[target]; exists {
+							AddressCacheList[target] += 0
+						} else {
+							AddressCacheList[target] = 0
+						}
+					}
+
+					//}
+
 					//check update stake
 					if checkStakeTransaction(tx.Type) {
-						set.Add(tx.Source.AddrPrefixString())
+						if tx.Target != nil {
+							set.Add(tx.Target.AddrPrefixString())
+						}
 					}
 					//stake list
-					if _, exists := stakelist[tx.Target.AddrPrefixString()][tx.Source.AddrPrefixString()]; exists {
-						if tx.Type == types.TransactionTypeStakeAdd {
-							stakelist[tx.Target.AddrPrefixString()][tx.Source.AddrPrefixString()] += tx.Value.Int64()
-						}
-						if tx.Type == types.TransactionTypeStakeReduce {
-							stakelist[tx.Target.AddrPrefixString()][tx.Source.AddrPrefixString()] -= tx.Value.Int64()
-						}
-					} else {
-						stakelist[tx.Target.AddrPrefixString()] = map[string]int64{}
-						if tx.Type == types.TransactionTypeStakeAdd {
-							stakelist[tx.Target.AddrPrefixString()][tx.Source.AddrPrefixString()] = tx.Value.Int64()
-						}
-						if tx.Type == types.TransactionTypeStakeReduce {
-							stakelist[tx.Target.AddrPrefixString()][tx.Source.AddrPrefixString()] = -tx.Value.Int64()
+
+					if tx.Type == types.TransactionTypeStakeAdd || tx.Type == types.TransactionTypeStakeReduce {
+
+						if _, exists := stakelist[tx.Target.AddrPrefixString()][tx.Source.AddrPrefixString()]; exists {
+							if tx.Type == types.TransactionTypeStakeAdd {
+								stakelist[tx.Target.AddrPrefixString()][tx.Source.AddrPrefixString()] += tx.Value.Int64()
+							}
+							if tx.Type == types.TransactionTypeStakeReduce {
+								stakelist[tx.Target.AddrPrefixString()][tx.Source.AddrPrefixString()] -= tx.Value.Int64()
+							}
+						} else {
+							stakelist[tx.Target.AddrPrefixString()] = map[string]int64{}
+							if tx.Type == types.TransactionTypeStakeAdd {
+								stakelist[tx.Target.AddrPrefixString()][tx.Source.AddrPrefixString()] = tx.Value.Int64()
+							}
+							if tx.Type == types.TransactionTypeStakeReduce {
+								stakelist[tx.Target.AddrPrefixString()][tx.Source.AddrPrefixString()] = -tx.Value.Int64()
+							}
 						}
 					}
 
@@ -141,8 +161,8 @@ func (tm *DBMmanagement) excuteAccounts() {
 			//生成质押来源信息
 			generateStakefromByTransaction(tm, stakelist)
 			//begain
-			accounts := &models.Account{}
 			for address, totalTx := range AddressCacheList {
+				accounts := &models.AccountList{}
 				targetAddrInfo := tm.storage.GetAccountById(address)
 				//不存在账号
 				if targetAddrInfo == nil || len(targetAddrInfo) < 1 {
@@ -164,16 +184,17 @@ func (tm *DBMmanagement) excuteAccounts() {
 
 				}
 				//update stake
-
 			}
 			if set.M != nil {
-				account := &models.Account{}
+				account := &models.AccountList{}
 				for aa, _ := range set.M {
 					account.Address = aa.(string)
+
 					tm.UpdateAccountStake(account, 0)
 				}
 			}
 			for address, _ := range PoolList {
+				accounts := &models.AccountList{}
 				targetAddrInfo := tm.storage.GetAccountById(address)
 				if targetAddrInfo == nil || len(targetAddrInfo) < 1 {
 					accounts.Address = address
@@ -202,7 +223,8 @@ func (tm *DBMmanagement) excuteAccounts() {
 }
 
 func checkStakeTransaction(trtype int8) bool {
-	if trtype == types.TransactionTypeStakeReduce || trtype == types.TransactionTypeStakeAdd {
+	if trtype == types.TransactionTypeStakeReduce || trtype == types.TransactionTypeStakeAdd ||
+		trtype == types.TransactionTypeApplyGuardMiner || trtype == types.TransactionTypeVoteMinerPool {
 		return true
 	}
 	return false
@@ -393,16 +415,16 @@ func handelInGroup(tm *DBMmanagement, groups []models.Group, groupState int) boo
 
 			switch groupState {
 			case prepareGroup:
-				tm.storage.GetDB().Table("accounts").Where("address = ?", addr).Updates(map[string]interface{}{
+				tm.storage.GetDB().Table(mysql.ACCOUNTDBNAME).Where("address = ?", addr).Updates(map[string]interface{}{
 					"prepare_group": gorm.Expr("prepare_group + ?", 1),
 				})
 			case workGroup:
-				tm.storage.GetDB().Table("accounts").Where("address = ?", addr).Updates(map[string]interface{}{
+				tm.storage.GetDB().Table(mysql.ACCOUNTDBNAME).Where("address = ?", addr).Updates(map[string]interface{}{
 					"work_group":    gorm.Expr("work_group + ?", 1),
 					"prepare_group": gorm.Expr("prepare_group - ?", 1),
 				})
 			case dismissGroup:
-				tm.storage.GetDB().Table("accounts").Where("address = ?", addr).Updates(map[string]interface{}{
+				tm.storage.GetDB().Table(mysql.ACCOUNTDBNAME).Where("address = ?", addr).Updates(map[string]interface{}{
 					"dismiss_group": gorm.Expr("dismiss_group + ?", 1),
 					"work_group":    gorm.Expr("work_group - ?", 1),
 				})
@@ -454,6 +476,7 @@ func GetMinerInfo(addr string, height uint64) (map[string]*common2.MortGage, str
 	//}
 	var stakefrom = ""
 	if proposalInfo != nil {
+		fmt.Println("[DBMmanagement]  GetMinerInfo proposal:", addr, ",", util.ObjectTojson(proposalInfo))
 		mort := common2.NewMortGageFromMiner(proposalInfo)
 		morts["proposal"] = mort
 		//morts = append(morts, mort)
@@ -484,6 +507,7 @@ func GetMinerInfo(addr string, height uint64) (map[string]*common2.MortGage, str
 	}
 	verifierInfo := core.MinerManagerImpl.GetLatestMiner(address, types.MinerTypeVerify)
 	if verifierInfo != nil {
+		fmt.Println("[DBMmanagement]  GetMinerInfo veri:", addr, ",", util.ObjectTojson(verifierInfo))
 		morts["verify"] = common2.NewMortGageFromMiner(verifierInfo)
 		if stakefrom == "" {
 			stakefrom = addr
@@ -507,7 +531,7 @@ func GetStakeFrom(address common.Address) string {
 	return strings.Trim(stakeFrom, ",")
 }
 
-func (tm *DBMmanagement) UpdateAccountStake(account *models.Account, height uint64) {
+func (tm *DBMmanagement) UpdateAccountStake(account *models.AccountList, height uint64) {
 	if account == nil {
 		return
 	}
@@ -518,6 +542,8 @@ func (tm *DBMmanagement) UpdateAccountStake(account *models.Account, height uint
 		if minerinfo["verify"] != nil {
 			verifystake = minerinfo["verify"].Stake
 			mapcolumn["verify_stake"] = verifystake
+			mapcolumn["verify_status"] = minerinfo["verify"].Status
+			mapcolumn["role_type"] = minerinfo["verify"].Identity
 		}
 		var prostake uint64
 		if minerinfo["proposal"] != nil {

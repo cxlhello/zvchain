@@ -16,9 +16,10 @@ const (
 	DismissGropHeight     = "group.top_dismiss_group_height"
 	LIMIT                 = 20
 	CheckpointMaxHeight   = 1000000000
+	ACCOUNTDBNAME         = "account_lists"
 )
 
-func (storage *Storage) UpdateBatchAccount(accounts []*models.Account) bool {
+func (storage *Storage) UpdateBatchAccount(accounts []*models.AccountList) bool {
 	//fmt.Println("[Storage] add log ")
 	if storage.db == nil {
 		fmt.Println("[Storage] storage.db == nil")
@@ -42,7 +43,7 @@ func (storage *Storage) MapToJson(mapdata map[string]interface{}) string {
 	return data
 }
 
-func (storage *Storage) AddBatchAccount(accounts []*models.Account) bool {
+func (storage *Storage) AddBatchAccount(accounts []*models.AccountList) bool {
 	//fmt.Println("[Storage] add log ")
 	if storage.db == nil {
 		fmt.Println("[Storage] storage.db == nil")
@@ -56,46 +57,46 @@ func (storage *Storage) AddBatchAccount(accounts []*models.Account) bool {
 	return true
 }
 
-func (storage *Storage) GetAccountById(address string) []*models.Account {
+func (storage *Storage) GetAccountById(address string) []*models.AccountList {
 	//fmt.Println("[Storage] add Verification ")
 	if storage.db == nil {
 		fmt.Println("[Storage] storage.db == nil")
 		return nil
 	}
-	accounts := make([]*models.Account, 0, 0)
+	accounts := make([]*models.AccountList, 0, 0)
 	storage.db.Where("address = ? ", address).Find(&accounts)
 	return accounts
 }
 
-func (storage *Storage) GetAccountByMaxPrimaryId(maxid uint64) []*models.Account {
+func (storage *Storage) GetAccountByMaxPrimaryId(maxid uint64) []*models.AccountList {
 	//fmt.Println("[Storage] add Verification ")
 	if storage.db == nil {
 		fmt.Println("[Storage] storage.db == nil")
 		return nil
 	}
-	accounts := make([]*models.Account, LIMIT, LIMIT)
+	accounts := make([]*models.AccountList, LIMIT, LIMIT)
 	storage.db.Where("id > ? ", maxid).Limit(LIMIT).Find(&accounts)
 	return accounts
 }
 
-func (storage *Storage) GetAccountByPage(page uint64) []*models.Account {
+func (storage *Storage) GetAccountByPage(page uint64) []*models.AccountList {
 	//fmt.Println("[Storage] add Verification ")
 	if storage.db == nil {
 		fmt.Println("[Storage] storage.db == nil")
 		return nil
 	}
-	accounts := make([]*models.Account, LIMIT, LIMIT)
+	accounts := make([]*models.AccountList, LIMIT, LIMIT)
 	storage.db.Offset(page * LIMIT).Limit(LIMIT).Find(&accounts)
 	return accounts
 }
 
-func (storage *Storage) GetAccountByRoletype(maxid uint, roleType uint64) []*models.Account {
+func (storage *Storage) GetAccountByRoletype(maxid uint, roleType uint64) []*models.AccountList {
 	//fmt.Println("[Storage] add Verification ")
 	if storage.db == nil {
 		fmt.Println("[Storage] storage.db == nil")
 		return nil
 	}
-	accounts := make([]*models.Account, LIMIT, LIMIT)
+	accounts := make([]*models.AccountList, LIMIT, LIMIT)
 	if maxid > 0 {
 		storage.db.Limit(LIMIT).Where("role_type = ? and id < ?", roleType, maxid).Order("id desc").Find(&accounts)
 	} else {
@@ -123,7 +124,7 @@ func (storage *Storage) AddBlockRewardMysqlTransaction(accounts map[string]uint6
 	tx := storage.db.Begin()
 
 	updateReward := func(addr string, reward uint64) error {
-		return tx.Table("accounts").
+		return tx.Table(ACCOUNTDBNAME).
 			Where("address = ?", addr).
 			Updates(map[string]interface{}{"rewards": gorm.Expr("rewards + ?", reward)}).Error
 	}
@@ -248,7 +249,7 @@ func (storage *Storage) AddBlockHeightSystemconfig(sys *models.Sys) bool {
 //	return true
 //}
 
-func (storage *Storage) UpdateAccountByColumn(account *models.Account, attrs map[string]interface{}) bool {
+func (storage *Storage) UpdateAccountByColumn(account *models.AccountList, attrs map[string]interface{}) bool {
 	//fmt.Println("[Storage] add Verification ")
 	if storage.db == nil {
 		fmt.Println("[Storage] storage.db == nil")
@@ -263,7 +264,7 @@ func (storage *Storage) UpdateAccountByColumn(account *models.Account, attrs map
 
 }
 
-func (storage *Storage) UpdateAccountbyAddress(account *models.Account, attrs map[string]interface{}) bool {
+func (storage *Storage) UpdateAccountbyAddress(account *models.AccountList, attrs map[string]interface{}) bool {
 	//fmt.Println("[Storage] add Verification ")
 	if storage.db == nil {
 		fmt.Println("[Storage] storage.db == nil")
