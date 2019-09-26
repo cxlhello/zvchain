@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"github.com/jinzhu/gorm"
 	common2 "github.com/zvchain/zvchain/browser/common"
+	browserlog "github.com/zvchain/zvchain/browser/log"
 	"github.com/zvchain/zvchain/browser/models"
 	"github.com/zvchain/zvchain/browser/mysql"
 	"github.com/zvchain/zvchain/browser/util"
 	"github.com/zvchain/zvchain/cmd/gzv/rpc"
 	"github.com/zvchain/zvchain/common"
+	"github.com/zvchain/zvchain/consensus/mediator"
 	"github.com/zvchain/zvchain/core"
 	"github.com/zvchain/zvchain/middleware/types"
 	"strings"
@@ -60,6 +62,7 @@ func (tm *DBMmanagement) loop() {
 		check = time.NewTicker(checkInterval)
 	)
 	defer check.Stop()
+	tm.fetchGenesisAndGuardianAccounts()
 	go tm.fetchAccounts()
 	go tm.fetchGroup()
 	for {
@@ -81,13 +84,47 @@ func (tm *DBMmanagement) fetchAccounts() {
 
 }
 
+func (tm *DBMmanagement) fetchGenesisAndGuardianAccounts() {
+	consensusImpl := mediator.ConsensusHelperImpl{}
+	genesisInfo := consensusImpl.GenerateGenesisInfo()
+
+	accounts := make([]string, 0)
+	// genesis group members
+	for _, member := range genesisInfo.Group.Members() {
+		miner := common.ToAddrHex(member.ID())
+		accounts = append(accounts, miner)
+	}
+
+	// guardian accounts
+	for _, guardNode := range common.ExtractGuardNodes {
+		accounts = append(accounts, guardNode.AddrPrefixString())
+	}
+
+	for _, miner := range accounts {
+		targetAddrInfo := tm.storage.GetAccountById(miner)
+
+		accounts := &models.AccountList{}
+		// if the account doesn't exist
+		if targetAddrInfo == nil || len(targetAddrInfo) < 1 {
+			accounts.Address = miner
+			accounts.Balance = tm.fetcher.Fetchbalance(miner)
+			if !tm.storage.AddObjects(accounts) {
+				return
+			}
+			tm.UpdateAccountStake(accounts, 0)
+		}
+	}
+}
+
 func (tm *DBMmanagement) excuteAccounts() {
 
 	topHeight := core.BlockChainImpl.Height()
-	if tm.blockHeight > topHeight-100 {
+	checkpoint := core.BlockChainImpl.LatestCheckPoint()
+	if (checkpoint.Height > 0 && tm.blockHeight > checkpoint.Height) || (tm.blockHeight > topHeight-100) {
 		return
 	}
-	fmt.Println("[DBMmanagement]  fetchBlock height:", tm.blockHeight, "CheckPointHeight", topHeight)
+	browserlog.BrowserLog.Info("[DBMmanagement] excuteAccounts height:", tm.blockHeight, "CheckPointHeight", checkpoint)
+	//fmt.Println("[DBMmanagement]  fetchBlock height:", tm.blockHeight, "CheckPointHeight", topHeight)
 	chain := core.BlockChainImpl
 	block := chain.QueryBlockCeil(tm.blockHeight)
 
@@ -168,7 +205,7 @@ func (tm *DBMmanagement) excuteAccounts() {
 				if targetAddrInfo == nil || len(targetAddrInfo) < 1 {
 					accounts.Address = address
 					accounts.TotalTransaction = totalTx
-					accounts.Balance = tm.fetchbalance(address)
+					accounts.Balance = tm.fetcher.Fetchbalance(address)
 					if !tm.storage.AddObjects(accounts) {
 						return
 					}
@@ -178,7 +215,7 @@ func (tm *DBMmanagement) excuteAccounts() {
 					//accounts.TotalTransaction = totalTx
 					//accounts.ID = targetAddrInfo[0].ID
 					//accounts.Balance = tm.fetchbalance(address)
-					if !tm.storage.UpdateAccountbyAddress(accounts, map[string]interface{}{"total_transaction": gorm.Expr("total_transaction + ?", totalTx), "balance": tm.fetchbalance(address)}) {
+					if !tm.storage.UpdateAccountbyAddress(accounts, map[string]interface{}{"total_transaction": gorm.Expr("total_transaction + ?", totalTx), "balance": tm.fetcher.Fetchbalance(address)}) {
 						return
 					}
 
@@ -225,7 +262,8 @@ func (tm *DBMmanagement) excuteAccounts() {
 
 func checkStakeTransaction(trtype int8) bool {
 	if trtype == types.TransactionTypeStakeReduce || trtype == types.TransactionTypeStakeAdd ||
-		trtype == types.TransactionTypeApplyGuardMiner || trtype == types.TransactionTypeVoteMinerPool {
+		trtype == types.TransactionTypeApplyGuardMiner || trtype == types.TransactionTypeVoteMinerPool ||
+		trtype == types.TransactionTypeChangeFundGuardMode {
 		return true
 	}
 	return false
@@ -244,15 +282,9 @@ func (tm *DBMmanagement) fetchTickets(address string) string {
 	return data
 }
 
-func (tm *DBMmanagement) fetchbalance(addr string) float64 {
-	b := core.BlockChainImpl.GetBalance(common.StringToAddress(addr))
-	balance := common.RA2TAS(b.Uint64())
-
-	return balance
-}
-
 func (tm *DBMmanagement) fetchGroup() {
-	fmt.Println("[DBMmanagement]  fetchGroup height:", tm.groupHeight)
+	//fmt.Println("[DBMmanagement]  fetchGroup height:", tm.groupHeight)
+	browserlog.BrowserLog.Info("[DBMmanagement] fetchGroup height:", tm.groupHeight)
 
 	//读本地数据库表
 	db := tm.storage.GetDB()
@@ -477,7 +509,6 @@ func GetMinerInfo(addr string, height uint64) (map[string]*common2.MortGage, str
 	//}
 	var stakefrom = ""
 	if proposalInfo != nil {
-		fmt.Println("[DBMmanagement]  GetMinerInfo proposal:", addr, ",", util.ObjectTojson(proposalInfo))
 		mort := common2.NewMortGageFromMiner(proposalInfo)
 		morts["proposal"] = mort
 		//morts = append(morts, mort)
@@ -508,7 +539,6 @@ func GetMinerInfo(addr string, height uint64) (map[string]*common2.MortGage, str
 	}
 	verifierInfo := core.MinerManagerImpl.GetLatestMiner(address, types.MinerTypeVerify)
 	if verifierInfo != nil {
-		fmt.Println("[DBMmanagement]  GetMinerInfo veri:", addr, ",", util.ObjectTojson(verifierInfo))
 		morts["verify"] = common2.NewMortGageFromMiner(verifierInfo)
 		if stakefrom == "" {
 			stakefrom = addr
