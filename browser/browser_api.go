@@ -120,7 +120,9 @@ func (tm *DBMmanagement) excuteAccounts() {
 
 	topHeight := core.BlockChainImpl.Height()
 	checkpoint := core.BlockChainImpl.LatestCheckPoint()
-	if (checkpoint.Height > 0 && tm.blockHeight > checkpoint.Height) || (tm.blockHeight > topHeight-100) {
+	if checkpoint.Height > 0 && tm.blockHeight > checkpoint.Height {
+		return
+	} else if checkpoint.Height == 0 && tm.blockHeight > topHeight-50 {
 		return
 	}
 	browserlog.BrowserLog.Info("[DBMmanagement] excuteAccounts height:", tm.blockHeight, "CheckPointHeight", checkpoint)
@@ -251,7 +253,7 @@ func (tm *DBMmanagement) excuteAccounts() {
 		}
 		//块高存储持久化
 		sys := &models.Sys{
-			Variable: mysql.Blocktophight,
+			Variable: mysql.Blocktopheight,
 			SetBy:    "wujia",
 		}
 		tm.storage.AddBlockHeightSystemconfig(sys)
@@ -516,7 +518,7 @@ func GetMinerInfo(addr string, height uint64) (map[string]*common2.MortGage, str
 		details := core.MinerManagerImpl.GetStakeDetails(address, address)
 		var selfStakecount uint64 = 0
 		for _, detail := range details {
-			if detail.MType == types.MinerTypeProposal {
+			if detail.MType == types.MinerTypeProposal && detail.Status == types.Staked {
 				selfStakecount += detail.Value
 			}
 		}
