@@ -324,7 +324,7 @@ func (server *Crontab) consumeBlock(localHeight uint64, pre uint64) {
 	blockDetail, _ := server.fetcher.ExplorerBlockDetail(localHeight)
 	if blockDetail != nil {
 		if maxHeight > pre {
-			server.storage.DeleteForkblock(pre, localHeight)
+			server.storage.DeleteForkblock(pre, localHeight, blockDetail.CurTime)
 		}
 		if server.storage.AddBlock(&blockDetail.Block) {
 			trans := make([]*models.Transaction, 0, 0)
@@ -425,10 +425,14 @@ func (crontab *Crontab) dataCompensationProcess(notifyHeight uint64, notifyPreHe
 	if !crontab.isInited {
 		//fmt.Println("[Storage]  dataCompensationProcess start: ", notifyHeight, notifyPreHeight)
 		browserlog.BrowserLog.Info("[Storage]  dataCompensationProcess start: ", notifyHeight, notifyPreHeight)
-
 		dbMaxHeight := crontab.blockTopHeight
 		if dbMaxHeight > 0 && dbMaxHeight <= notifyPreHeight {
-			crontab.storage.DeleteForkblock(dbMaxHeight-1, dbMaxHeight)
+			blockceil := core.BlockChainImpl.QueryBlockCeil(dbMaxHeight)
+			time := time.Now()
+			if blockceil != nil {
+				time = blockceil.Header.CurTime.Local()
+			}
+			crontab.storage.DeleteForkblock(dbMaxHeight-1, dbMaxHeight, time)
 			crontab.dataCompensation(dbMaxHeight, notifyPreHeight)
 		}
 		crontab.isInited = true

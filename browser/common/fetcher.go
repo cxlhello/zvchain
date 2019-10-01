@@ -22,6 +22,12 @@ type MortGage struct {
 	Identity             types.NodeIdentity `json:"identity"`
 	IdentityUpdateHeight uint64             `json:"identity_update_height"`
 }
+type FronzenAndStakeFrom struct {
+	StakeFrom      string `json:"stake_from"`
+	ProposalFrozen uint64 `json:"proposal_frozen"`
+	VerifyFrozen   uint64 `json:"verify_frozen"`
+}
+
 type Group struct {
 	Seed          common.Hash `json:"id"`
 	BeginHeight   uint64      `json:"begin_height"`
