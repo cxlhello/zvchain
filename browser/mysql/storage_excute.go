@@ -144,8 +144,8 @@ func (storage *Storage) AddBlockRewardMysqlTransaction(accounts map[string]float
 		if ok {
 			if blockcount["verify_count"] > 0 {
 				mapData["verify_count"] = gorm.Expr("verify_count + ?", blockcount["verify_count"])
-
-			} else if blockcount["proposal_count"] > 0 {
+			}
+			if blockcount["proposal_count"] > 0 {
 				mapData["proposal_count"] = gorm.Expr("proposal_count + ?", blockcount["proposal_count"])
 			}
 		}
