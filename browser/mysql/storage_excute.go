@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/jinzhu/gorm"
+	browserlog "github.com/zvchain/zvchain/browser/log"
 	"github.com/zvchain/zvchain/browser/models"
-	"strings"
 	"time"
 )
 
@@ -20,7 +20,6 @@ const (
 	PrepareGroupTopHeight = "group.top_prepare_group_height"
 	DismissGropHeight     = "group.top_dismiss_group_height"
 	LIMIT                 = 20
-	CheckpointMaxHeight   = 1000000000
 	ACCOUNTDBNAME         = "account_lists"
 )
 
@@ -119,7 +118,8 @@ func (storage *Storage) GetGroupByHigh(height uint64) []*models.Group {
 
 func (storage *Storage) AddBlockRewardMysqlTransaction(accounts map[string]float64,
 	updates map[string]float64,
-	mapblockcount map[string]map[string]uint64) bool {
+	mapblockcount map[string]map[string]uint64,
+	forcount uint64) bool {
 	if storage.db == nil {
 		return false
 	}
@@ -162,7 +162,7 @@ func (storage *Storage) AddBlockRewardMysqlTransaction(accounts map[string]float
 			return false
 		}
 	}
-	if !storage.IncrewardBlockheightTosys(tx, Blockrewardtopheight) {
+	if !storage.IncrewardBlockheightTosys(tx, Blockrewardtopheight, forcount) {
 		return false
 	}
 	isSuccess = true
@@ -220,7 +220,7 @@ func getstakefrom(tx *gorm.DB, address string, from string) *models.PoolStake {
 	return stake
 
 }
-func (storage *Storage) IncrewardBlockheightTosys(tx *gorm.DB, variable string) bool {
+func (storage *Storage) IncrewardBlockheightTosys(tx *gorm.DB, variable string, value uint64) bool {
 	if variable == "" {
 		return false
 	}
@@ -228,11 +228,12 @@ func (storage *Storage) IncrewardBlockheightTosys(tx *gorm.DB, variable string) 
 	sys := &models.Sys{
 		Variable: variable,
 		SetBy:    "carrie.cxl",
+		Value:    value,
 	}
 	sysConfig := make([]models.Sys, 0, 0)
 	tx.Limit(1).Where("variable = ?", variable).Find(&sysConfig)
 	if sysConfig != nil && len(sysConfig) > 0 {
-		if !errors(tx.Model(&sysConfig[0]).UpdateColumn("value", gorm.Expr("value + ?", 1)).Error) {
+		if !errors(tx.Model(&sysConfig[0]).UpdateColumn("value", value).Error) {
 			return false
 		}
 	} else {
@@ -258,7 +259,7 @@ func (storage *Storage) AddBlockHeightSystemconfig(sys *models.Sys) bool {
 	if hight == 0 && ifexist == false {
 		storage.AddObjects(&sys)
 	} else {
-		storage.db.Model(&sys).Where("variable=?", sys.Variable).UpdateColumn("value", gorm.Expr("value + ?", 1))
+		storage.db.Model(&sys).Where("variable=?", sys.Variable).UpdateColumn("value", sys.Value)
 	}
 	return true
 }
@@ -275,7 +276,7 @@ func (storage *Storage) AddSysConfig(variable string) {
 		storage.AddObjects(sys)
 	}
 }
-func (storage *Storage) UpdateSysConfigValue(variable string, value int64, isadd bool) {
+func (storage *Storage) UpdateSysConfigValue(variable string, value int64) {
 	if value < 1 {
 		return
 	}
@@ -283,19 +284,7 @@ func (storage *Storage) UpdateSysConfigValue(variable string, value int64, isadd
 		Variable: variable,
 		SetBy:    "xiaoli",
 	}
-	if isadd {
-		storage.db.Model(sys).Where("variable=?", sys.Variable).UpdateColumn("value", gorm.Expr("value + ?", value))
-	} else {
-		err := storage.db.Model(sys).Where("variable=?", sys.Variable).UpdateColumn("value", gorm.Expr("value - ?", value)).Error
-		if err != nil {
-			errstring := err.Error()
-			index := strings.Index(errstring, "Error 1690")
-			//when value < 0 ,out of range
-			if index >= 0 {
-				storage.db.Model(sys).Where("variable=?", sys.Variable).UpdateColumn("value", 0)
-			}
-		}
-	}
+	storage.db.Model(sys).Where("variable=?", sys.Variable).UpdateColumn("value", gorm.Expr("value + ?", value))
 }
 
 func (storage *Storage) InitCurConfig() {
@@ -342,7 +331,7 @@ func (storage *Storage) AddCurCountconfig(curtime time.Time, variable string) bo
 		}
 	}
 	if GetTodayStartTs(curtime).Equal(GetTodayStartTs(t)) {
-		storage.UpdateSysConfigValue(variable, 1, true)
+		storage.UpdateSysConfigValue(variable, 1)
 	}
 	return true
 }
@@ -512,6 +501,7 @@ func (storage *Storage) AddBlock(block *models.Block) bool {
 	if !errors(storage.db.Create(&block).Error) {
 		blocksql := fmt.Sprintf("DELETE  FROM blocks WHERE  hash = '%s'",
 			block.Hash)
+		browserlog.BrowserLog.Info("AddBlockDELETE", blocksql)
 		storage.db.Exec(blocksql)
 		storage.db.Create(&block)
 	}
@@ -541,6 +531,7 @@ func (storage *Storage) AddTransactions(trans []*models.Transaction) bool {
 			if !errors(storage.db.Create(&trans[i]).Error) {
 				transql := fmt.Sprintf("DELETE  FROM transactions WHERE  hash = '%s'",
 					trans[i].Hash)
+				browserlog.BrowserLog.Info("AddTransactionsDELETE", transql)
 				storage.db.Exec(transql)
 				storage.db.Create(&trans[i])
 			}
@@ -569,6 +560,7 @@ func (storage *Storage) AddReceipts(receipts []*models.Receipt) bool {
 		if !errors(storage.db.Create(&receipts[i]).Error) {
 			transql := fmt.Sprintf("DELETE  FROM receipts WHERE  tx_hash = '%s'",
 				receipts[i].TxHash)
+			browserlog.BrowserLog.Info("AddReceiptsDELETE", transql)
 			storage.db.Exec(transql)
 			storage.db.Create(&receipts[i])
 		}
@@ -606,13 +598,20 @@ func (storage *Storage) RewardTopBlockHeight() (uint64, uint64) {
 	}
 	return 0, 0
 }
+
+func (storage *Storage) GetProposalVerifyCount(minerType uint64, hash string) uint64 {
+	var count uint64
+	storage.db.Model(&models.Reward{}).Where("type=? and node_id = ?", minerType, hash).Count(&count)
+	return count
+}
+
 func (storage *Storage) GetTopblock() uint64 {
 	var maxHeight uint64
 	storage.db.Table("blocks").Select("max(height) as height").Row().Scan(&maxHeight)
 	return maxHeight
 }
 
-func (storage *Storage) DeleteForkblock(preHeight uint64, localHeight uint64, curTime time.Time) (err error) {
+func (storage *Storage) DeleteForkblock(preHeight uint64, localHeight uint64) (err error) {
 
 	defer func() { // 必须要先声明defer，否则不能捕获到panic异常
 		if err := recover(); err != nil {
@@ -622,13 +621,10 @@ func (storage *Storage) DeleteForkblock(preHeight uint64, localHeight uint64, cu
 	blockSql := fmt.Sprintf("DELETE  FROM blocks WHERE height > %d", preHeight)
 	transactionSql := fmt.Sprintf("DELETE  FROM transactions WHERE block_height > %d", preHeight)
 	receiptSql := fmt.Sprintf("DELETE  FROM receipts WHERE block_height > %d", preHeight)
-	blockCount := storage.db.Exec(blockSql)
-	transactionCount := storage.db.Exec(transactionSql)
+	storage.db.Exec(blockSql)
+	storage.db.Exec(transactionSql)
 	storage.db.Exec(receiptSql)
-	if GetTodayStartTs(curTime).Equal(GetTodayStartTs(time.Now())) {
-		storage.UpdateSysConfigValue(Blockcurblockheight, blockCount.RowsAffected, false)
-		storage.UpdateSysConfigValue(Blockcurtranheight, transactionCount.RowsAffected, false)
-	}
+	browserlog.BrowserLog.Info("[DeleteForkblock] DeleteForkblock preHeight:", preHeight, "localHeight", localHeight)
 	return err
 }
 
@@ -642,5 +638,6 @@ func (storage *Storage) DeleteForkReward(preHeight uint64, localHeight uint64) (
 
 	verifySql := fmt.Sprintf("DELETE FROM rewards WHERE reward_height > %d ", preHeight)
 	storage.db.Exec(verifySql)
+	browserlog.BrowserLog.Info("[DeleteForkReward] DeleteForkReward preHeight:", preHeight, "localHeight", localHeight)
 	return err
 }

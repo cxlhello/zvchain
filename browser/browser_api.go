@@ -49,10 +49,12 @@ func NewDBMmanagement(dbAddr string, dbPort int, dbUser string, dbPassword strin
 	tablMmanagement.storage = mysql.NewStorage(dbAddr, dbPort, dbUser, dbPassword, reset, resetcrontab)
 
 	tablMmanagement.blockHeight, _ = tablMmanagement.storage.TopBlockHeight()
+	if tablMmanagement.blockHeight > 0 {
+		tablMmanagement.blockHeight += 1
+	}
 	tablMmanagement.groupHeight, _ = tablMmanagement.storage.TopGroupHeight()
 	tablMmanagement.prepareGroupHeight, _ = tablMmanagement.storage.TopPrepareGroupHeight()
 	tablMmanagement.dismissGropHeight, _ = tablMmanagement.storage.TopDismissGroupHeight()
-	tablMmanagement.blockHeight = 0
 	go tablMmanagement.loop()
 	return tablMmanagement
 }
@@ -102,7 +104,6 @@ func (tm *DBMmanagement) fetchGenesisAndGuardianAccounts() {
 
 	for _, miner := range accounts {
 		targetAddrInfo := tm.storage.GetAccountById(miner)
-
 		accounts := &models.AccountList{}
 		// if the account doesn't exist
 		if targetAddrInfo == nil || len(targetAddrInfo) < 1 {
@@ -116,14 +117,32 @@ func (tm *DBMmanagement) fetchGenesisAndGuardianAccounts() {
 	}
 }
 
+func (tm *DBMmanagement) excuteAccountProposalAndVerifyCount() {
+	for page := 1; page < 100; page++ {
+		accounts := tm.storage.GetAccountByPage(uint64(page))
+		for _, acc := range accounts {
+			countVerify := tm.storage.GetProposalVerifyCount(uint64(types.MinerTypeVerify), acc.Address)
+			countProposal := tm.storage.GetProposalVerifyCount(uint64(types.MinerTypeProposal), acc.Address)
+			attrs := make(map[string]interface{})
+			attrs["proposal_count"] = countProposal
+			attrs["verify_count"] = countVerify
+			account := &models.AccountList{}
+			account.Address = acc.Address
+			tm.storage.UpdateAccountByColumn(account, attrs)
+		}
+	}
+}
+
 func (tm *DBMmanagement) excuteAccounts() {
 
 	topHeight := core.BlockChainImpl.Height()
 	checkpoint := core.BlockChainImpl.LatestCheckPoint()
-	if (checkpoint.Height > 0 && tm.blockHeight > checkpoint.Height) || (tm.blockHeight > topHeight-100) {
+	if checkpoint.Height > 0 && tm.blockHeight > checkpoint.Height {
+		return
+	} else if checkpoint.Height == 0 && tm.blockHeight > topHeight-50 {
 		return
 	}
-	browserlog.BrowserLog.Info("[DBMmanagement] excuteAccounts height:", tm.blockHeight, "CheckPointHeight", checkpoint)
+	browserlog.BrowserLog.Info("[DBMmanagement] excuteAccounts height:", tm.blockHeight, ",CheckPointHeight", checkpoint.Height, ",TopHeight", topHeight)
 	//fmt.Println("[DBMmanagement]  fetchBlock height:", tm.blockHeight, "CheckPointHeight", topHeight)
 	chain := core.BlockChainImpl
 	block := chain.QueryBlockCeil(tm.blockHeight)
@@ -253,6 +272,7 @@ func (tm *DBMmanagement) excuteAccounts() {
 		sys := &models.Sys{
 			Variable: mysql.Blocktopheight,
 			SetBy:    "wujia",
+			Value:    block.Header.Height,
 		}
 		tm.storage.AddBlockHeightSystemconfig(sys)
 		tm.blockHeight = block.Header.Height + 1
@@ -263,8 +283,8 @@ func (tm *DBMmanagement) excuteAccounts() {
 func checkStakeTransaction(trtype int8) bool {
 	if trtype == types.TransactionTypeStakeReduce || trtype == types.TransactionTypeStakeAdd ||
 		trtype == types.TransactionTypeApplyGuardMiner || trtype == types.TransactionTypeVoteMinerPool ||
-		trtype == types.TransactionTypeChangeFundGuardMode ||
-		trtype == types.TransactionTypeMinerAbort || trtype == types.TransactionTypeStakeRefund {
+		trtype == types.TransactionTypeChangeFundGuardMode || trtype == types.TransactionTypeMinerAbort ||
+		trtype == types.TransactionTypeStakeRefund {
 		return true
 	}
 	return false
@@ -494,9 +514,9 @@ func generateStakefromByTransaction(tm *DBMmanagement, stakelist map[string]map[
 
 }
 
-func GetMinerInfo(addr string, height uint64) (map[string]*common2.MortGage, *common2.FronzenAndStakeFrom) {
+func GetMinerInfo(addr string, height uint64) (map[string]*common2.MortGage, string) {
 	if !common.ValidateAddress(strings.TrimSpace(addr)) {
-		return nil, nil
+		return nil, ""
 	}
 
 	morts := make(map[string]*common2.MortGage)
@@ -508,33 +528,19 @@ func GetMinerInfo(addr string, height uint64) (map[string]*common2.MortGage, *co
 	//	proposalInfo = core.MinerManagerImpl.GetMiner(address, types.MinerTypeProposal, height)
 
 	//}
-	details := core.MinerManagerImpl.GetStakeDetails(address, address)
-	var selfStakecount, proposalfrozenStake, verifyfrozenStake uint64
-
-	for _, detail := range details {
-		if detail.MType == types.MinerTypeProposal && detail.Status == types.Staked {
-			selfStakecount += detail.Value
-		}
-		if detail.Status == types.StakeFrozen && detail.MType == types.MinerTypeProposal {
-			proposalfrozenStake += detail.Value
-		}
-		if detail.Status == types.StakeFrozen && detail.MType == types.MinerTypeVerify {
-			verifyfrozenStake += detail.Value
-		}
-	}
-
-	data := &common2.FronzenAndStakeFrom{
-		ProposalFrozen: proposalfrozenStake,
-		VerifyFrozen:   verifyfrozenStake,
-	}
-
 	var stakefrom = ""
 	if proposalInfo != nil {
 		mort := common2.NewMortGageFromMiner(proposalInfo)
 		morts["proposal"] = mort
 		//morts = append(morts, mort)
 		//get stakeinfo by miners themselves
-
+		details := core.MinerManagerImpl.GetStakeDetails(address, address)
+		var selfStakecount uint64 = 0
+		for _, detail := range details {
+			if detail.MType == types.MinerTypeProposal && detail.Status == types.Staked {
+				selfStakecount += detail.Value
+			}
+		}
 		fmt.Println("GetMinerInfo", proposalInfo.Stake, ",", selfStakecount, ",", address)
 		other := &common2.MortGage{
 			Stake:       mort.Stake - uint64(common.RA2TAS(selfStakecount)),
@@ -559,8 +565,7 @@ func GetMinerInfo(addr string, height uint64) (map[string]*common2.MortGage, *co
 			stakefrom = addr
 		}
 	}
-	data.StakeFrom = stakefrom
-	return morts, data
+	return morts, stakefrom
 }
 func GetStakeFrom(address common.Address) string {
 	allStakeDetails := core.MinerManagerImpl.GetAllStakeDetails(address)
@@ -582,7 +587,7 @@ func (tm *DBMmanagement) UpdateAccountStake(account *models.AccountList, height 
 	if account == nil {
 		return
 	}
-	minerinfo, frozensAndtakefrom := GetMinerInfo(account.Address, height)
+	minerinfo, stakefrom := GetMinerInfo(account.Address, height)
 	if len(minerinfo) > 0 {
 		var verifystake uint64
 		mapcolumn := make(map[string]interface{})
@@ -600,11 +605,8 @@ func (tm *DBMmanagement) UpdateAccountStake(account *models.AccountList, height 
 			mapcolumn["status"] = minerinfo["proposal"].Status
 			mapcolumn["role_type"] = minerinfo["proposal"].Identity
 		}
-		mapcolumn["total_stake"] = verifystake + prostake + frozensAndtakefrom.ProposalFrozen + frozensAndtakefrom.VerifyFrozen
-		mapcolumn["stake_from"] = frozensAndtakefrom.StakeFrom
-		mapcolumn["proposal_frozenstake"] = frozensAndtakefrom.ProposalFrozen
-		mapcolumn["verify_frozenstake"] = frozensAndtakefrom.VerifyFrozen
-
+		mapcolumn["total_stake"] = verifystake + prostake
+		mapcolumn["stake_from"] = stakefrom
 		tm.storage.UpdateAccountByColumn(account, mapcolumn)
 	}
 }

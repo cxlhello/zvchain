@@ -13,7 +13,6 @@ func (transfer *Transfer) RewardsToAccounts(rewards []*ExploreBlockReward) (map[
 	explorerAccount := make([]*models.AccountList, 0, 0)
 	mapData := make(map[string]float64)
 	mapCount := make([]map[string]map[string]uint64, 0, 0)
-
 	if rewards != nil && len(rewards) > 0 {
 		for _, reward := range rewards {
 			account, mapdata := transfer.blockRewardTOAccount(reward)
@@ -30,13 +29,11 @@ func (transfer *Transfer) RewardsToAccounts(rewards []*ExploreBlockReward) (map[
 
 	}
 	mapCountplus := make(map[string]map[string]uint64)
-
 	for _, count := range mapCount {
 		for addr, data := range count {
 			if _, exists := mapCountplus[addr]; exists {
 				mapCountplus[addr]["proposal_count"] += data["proposal_count"]
 				mapCountplus[addr]["verify_count"] += data["verify_count"]
-
 			} else {
 				mapCountplus[addr] = map[string]uint64{}
 				mapCountplus[addr]["proposal_count"] = data["proposal_count"]
@@ -47,6 +44,7 @@ func (transfer *Transfer) RewardsToAccounts(rewards []*ExploreBlockReward) (map[
 	return mapData, mapCountplus
 
 }
+
 func (transfer *Transfer) blockRewardTOAccount(reward *ExploreBlockReward) ([]*models.AccountList, map[string]map[string]uint64) {
 	accounts := make([]*models.AccountList, 0, 0)
 	account := &models.AccountList{
@@ -73,13 +71,13 @@ func (transfer *Transfer) blockRewardTOAccount(reward *ExploreBlockReward) ([]*m
 			Rewards: float64(reward.VerifierReward.Value) + rewarMoney,
 		}
 		accounts = append(accounts, account)
-		address = targets[i].GetAddrString()
-		if _, exists := mapCount[address]; exists {
-			mapCount[address]["verify_count"] += 1
+		addr := targets[i].GetAddrString()
+		if _, exists := mapCount[addr]; exists {
+			mapCount[addr]["verify_count"] += 1
 		} else {
-			mapCount[address] = map[string]uint64{}
-			mapCount[address]["verify_count"] = 1
-			mapCount[address]["proposal_count"] = 0
+			mapCount[addr] = map[string]uint64{}
+			mapCount[addr]["verify_count"] = 1
+			mapCount[addr]["proposal_count"] = 0
 
 		}
 	}
