@@ -98,9 +98,9 @@ func (tm *DBMmanagement) fetchGenesisAndGuardianAccounts() {
 	}
 
 	// guardian accounts
-	for _, guardNode := range common.ExtractGuardNodes {
-		accounts = append(accounts, guardNode.AddrPrefixString())
-	}
+	//for _, guardNode := range common.ExtractGuardNodes {
+	//	accounts = append(accounts, guardNode.AddrPrefixString())
+	//}
 
 	for _, miner := range accounts {
 		targetAddrInfo := tm.storage.GetAccountById(miner)
