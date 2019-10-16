@@ -112,7 +112,7 @@ func (tm *DBMmanagement) fetchGenesisAndGuardianAccounts() {
 			if !tm.storage.AddObjects(accounts) {
 				return
 			}
-			tm.UpdateAccountStake(accounts, 0)
+			UpdateAccountStake(accounts, 0, tm.storage)
 		}
 	}
 }
@@ -246,7 +246,7 @@ func (tm *DBMmanagement) excuteAccounts() {
 				for aa, _ := range set.M {
 					account.Address = aa.(string)
 
-					tm.UpdateAccountStake(account, 0)
+					UpdateAccountStake(account, 0, tm.storage)
 				}
 			}
 			for address, _ := range PoolList {
@@ -514,9 +514,9 @@ func generateStakefromByTransaction(tm *DBMmanagement, stakelist map[string]map[
 
 }
 
-func GetMinerInfo(addr string, height uint64) (map[string]*common2.MortGage, string) {
+func GetMinerInfo(addr string, height uint64) (map[string]*common2.MortGage, *common2.FronzenAndStakeFrom) {
 	if !common.ValidateAddress(strings.TrimSpace(addr)) {
-		return nil, ""
+		return nil, nil
 	}
 
 	morts := make(map[string]*common2.MortGage)
@@ -528,19 +528,33 @@ func GetMinerInfo(addr string, height uint64) (map[string]*common2.MortGage, str
 	//	proposalInfo = core.MinerManagerImpl.GetMiner(address, types.MinerTypeProposal, height)
 
 	//}
+	details := core.MinerManagerImpl.GetStakeDetails(address, address)
+	var selfStakecount, proposalfrozenStake, verifyfrozenStake uint64
+
+	for _, detail := range details {
+		if detail.MType == types.MinerTypeProposal && detail.Status == types.Staked {
+			selfStakecount += detail.Value
+		}
+		if detail.Status == types.StakeFrozen && detail.MType == types.MinerTypeProposal {
+			proposalfrozenStake += detail.Value
+		}
+		if detail.Status == types.StakeFrozen && detail.MType == types.MinerTypeVerify {
+			verifyfrozenStake += detail.Value
+		}
+	}
+
+	data := &common2.FronzenAndStakeFrom{
+		ProposalFrozen: uint64(common.RA2TAS(proposalfrozenStake)),
+		VerifyFrozen:   uint64(common.RA2TAS(verifyfrozenStake)),
+	}
+
 	var stakefrom = ""
 	if proposalInfo != nil {
 		mort := common2.NewMortGageFromMiner(proposalInfo)
 		morts["proposal"] = mort
 		//morts = append(morts, mort)
 		//get stakeinfo by miners themselves
-		details := core.MinerManagerImpl.GetStakeDetails(address, address)
-		var selfStakecount uint64 = 0
-		for _, detail := range details {
-			if detail.MType == types.MinerTypeProposal && detail.Status == types.Staked {
-				selfStakecount += detail.Value
-			}
-		}
+
 		fmt.Println("GetMinerInfo", proposalInfo.Stake, ",", selfStakecount, ",", address)
 		other := &common2.MortGage{
 			Stake:       mort.Stake - uint64(common.RA2TAS(selfStakecount)),
@@ -565,7 +579,8 @@ func GetMinerInfo(addr string, height uint64) (map[string]*common2.MortGage, str
 			stakefrom = addr
 		}
 	}
-	return morts, stakefrom
+	data.StakeFrom = stakefrom
+	return morts, data
 }
 func GetStakeFrom(address common.Address) string {
 	allStakeDetails := core.MinerManagerImpl.GetAllStakeDetails(address)
@@ -583,11 +598,11 @@ func GetStakeFrom(address common.Address) string {
 	return strings.Trim(stakeFrom, ",")
 }
 
-func (tm *DBMmanagement) UpdateAccountStake(account *models.AccountList, height uint64) {
+func UpdateAccountStake(account *models.AccountList, height uint64, storage *mysql.Storage) {
 	if account == nil {
 		return
 	}
-	minerinfo, stakefrom := GetMinerInfo(account.Address, height)
+	minerinfo, frozensAndtakefrom := GetMinerInfo(account.Address, height)
 	if len(minerinfo) > 0 {
 		var verifystake uint64
 		mapcolumn := make(map[string]interface{})
@@ -605,9 +620,12 @@ func (tm *DBMmanagement) UpdateAccountStake(account *models.AccountList, height 
 			mapcolumn["status"] = minerinfo["proposal"].Status
 			mapcolumn["role_type"] = minerinfo["proposal"].Identity
 		}
-		mapcolumn["total_stake"] = verifystake + prostake
-		mapcolumn["stake_from"] = stakefrom
-		tm.storage.UpdateAccountByColumn(account, mapcolumn)
+		mapcolumn["total_stake"] = verifystake + prostake + frozensAndtakefrom.ProposalFrozen + frozensAndtakefrom.VerifyFrozen
+		mapcolumn["stake_from"] = frozensAndtakefrom.StakeFrom
+		mapcolumn["proposal_frozen_stake"] = frozensAndtakefrom.ProposalFrozen
+		mapcolumn["verify_frozen_stake"] = frozensAndtakefrom.VerifyFrozen
+
+		storage.UpdateAccountByColumn(account, mapcolumn)
 	}
 }
 

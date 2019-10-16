@@ -30,26 +30,35 @@ type PoolStake struct {
 
 type AccountList struct {
 	gorm.Model
-	Address          string  `json:"address" gorm:"unique_index"`
-	RoleType         uint64  `json:"role_type" gorm:"index;default:10"` // user default role_type value
-	ProposalStake    uint64  `json:"proposal_stake" gorm:"index"`
-	VerifyStake      uint64  `json:"verify_stake" gorm:"index"`
-	TotalStake       uint64  `json:"total_stake" gorm:"index"`
-	OtherStake       uint64  `json:"other_stake" gorm:"index"`
-	Group            string  `json:"group"`
-	WorkGroup        uint64  `json:"work_group" gorm:"index"`
-	DismissGroup     uint64  `json:"dismiss_group" gorm:"index"`
-	PrepareGroup     uint64  `json:"prepare_group" gorm:"index"`
-	TotalTransaction uint64  `json:"total_transaction"`
-	Rewards          float64 `json:"rewards"`
-	Status           int8    `json:"status" gorm:"index;default:-1"`
-	VerifyStatus     int8    `json:"verify_status" gorm:"index;default:-1"`
-	StakeFrom        string  `json:"stake_from"`
-	Balance          float64 `json:"balance"`
-	TotalBalance     float64 `json:"total_balance"`
-	ExtraData        string  `json:"extra_data" gorm:"type:TEXT;size:65000"` // roletype extra data
-	ProposalCount    uint64  `json:"proposal_count" gorm:"index;default:0"`
-	VerifyCount      uint64  `json:"verify_count" gorm:"index;default:0"`
+	Address             string  `json:"address" gorm:"unique_index"`
+	RoleType            uint64  `json:"role_type" gorm:"index;default:10"` // user default role_type value
+	ProposalStake       uint64  `json:"proposal_stake" gorm:"index"`
+	VerifyStake         uint64  `json:"verify_stake" gorm:"index"`
+	TotalStake          uint64  `json:"total_stake" gorm:"index"`
+	OtherStake          uint64  `json:"other_stake" gorm:"index"`
+	Group               string  `json:"group"`
+	WorkGroup           uint64  `json:"work_group" gorm:"index"`
+	DismissGroup        uint64  `json:"dismiss_group" gorm:"index"`
+	PrepareGroup        uint64  `json:"prepare_group" gorm:"index"`
+	TotalTransaction    uint64  `json:"total_transaction"`
+	Rewards             float64 `json:"rewards"`
+	Status              int8    `json:"status" gorm:"index;default:-1"`
+	VerifyStatus        int8    `json:"verify_status" gorm:"index;default:-1"`
+	StakeFrom           string  `json:"stake_from"`
+	Balance             float64 `json:"balance"`
+	TotalBalance        float64 `json:"total_balance"`
+	ExtraData           string  `json:"extra_data" gorm:"type:TEXT;size:65000"` // roletype extra data
+	ProposalCount       uint64  `json:"proposal_count" gorm:"index;default:0"`
+	VerifyCount         uint64  `json:"verify_count" gorm:"index;default:0"`
+	ProposalFrozenStake uint64  `json:"proposal_frozen_stake"`
+	VerifyFrozenStake   uint64  `json:"verify_frozen_stake"`
+}
+
+type RecentMineBlock struct {
+	gorm.Model
+	Address              string `json:"address" gorm:"unique_index"`
+	RecentProposalBlocks string `json:"recent_proposal_blocks" gorm:"type:LONGTEXT"`
+	RecentVerifyBlocks   string `json:"recent_verify_blocks" gorm:"type:LONGTEXT"`
 }
 
 type PoolExtraData struct {
@@ -149,12 +158,14 @@ type Transaction struct {
 	Type        int32     `json:"type"`
 	CurTime     time.Time `json:"cur_time" gorm:"index"`
 
-	GasLimit  uint64   `json:"gas_limit"`
-	GasPrice  uint64   `json:"gas_price"`
-	Hash      string   `json:"hash" gorm:"unique_index"`
-	Receipt   *Receipt `json:"receipt" gorm:"-"`
-	ExtraData string   `json:"extra_data" gorm:"type:TEXT;size:65000"`
-	Status    uint     `json:"status" gorm:"index"`
+	GasLimit          uint64   `json:"gas_limit"`
+	GasPrice          uint64   `json:"gas_price"`
+	CumulativeGasUsed uint64   `json:"cumulative_gas_used"`
+	Hash              string   `json:"hash" gorm:"unique_index"`
+	Receipt           *Receipt `json:"receipt" gorm:"-"`
+	ExtraData         string   `json:"extra_data" gorm:"type:TEXT;size:65000"`
+	Status            uint     `json:"status" gorm:"index"`
+	ContractAddress   string   `json:"contract_address"`
 }
 
 type Receipt struct {
@@ -193,3 +204,9 @@ type BlockDetail struct {
 	Receipts        []*Receipt         `json:"receipts"`
 	EvictedReceipts []*Receipt         `json:"evictedReceipts"`
 }
+
+type BlockHeights []uint64
+
+func (e BlockHeights) Len() int           { return len(e) }
+func (e BlockHeights) Less(i, j int) bool { return e[i] > e[j] }
+func (e BlockHeights) Swap(i, j int)      { e[i], e[j] = e[j], e[i] }
