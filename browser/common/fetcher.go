@@ -297,13 +297,16 @@ func IsTokenContract(contractAddr common.Address) bool {
 	}
 	code := db.GetCode(contractAddr)
 	contract := tvm.Contract{}
+	fmt.Println("IsTokenContract json,", string(code))
 	err = json.Unmarshal(code, &contract)
 	if err != nil {
-		browserlog.BrowserLog.Error("isTokenContract: ", err)
+		browserlog.BrowserLog.Error("isTokenContract err: ", err)
 		return false
 	}
 	if HasTransferFunc(contract.Code) {
 		symbol := db.GetData(contractAddr, []byte("symbol"))
+		fmt.Println("IsTokenContract HasTransferFunc,", symbol)
+
 		if len(symbol) >= 1 && symbol[0] == 's' {
 			return true
 		}

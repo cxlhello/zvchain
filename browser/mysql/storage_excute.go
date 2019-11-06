@@ -701,6 +701,8 @@ func (storage *Storage) AddTokenContract(tran *models.Transaction, log *models.L
 		realValue := &big.Int{}
 		realValue.SetString(value, 10)
 		if len(tokenContracts) == 0 {
+			fmt.Println("IsTokenContract", source, target, tran.ContractAddress)
+
 			if !common.IsTokenContract(common2.StringToAddress(tran.ContractAddress)) {
 				return
 			}
