@@ -691,9 +691,9 @@ func (storage *Storage) AddTokenContract(tran *models.Transaction, log *models.L
 	tokenContracts := make([]*models.TokenContract, 0)
 	storage.db.Model(models.TokenContract{}).Where("contract_addr = ?", tran.ContractAddress).Find(&tokenContracts)
 	if log != nil {
-		source := gjson.Get(log.Data, "default.0").String()
-		target := gjson.Get(log.Data, "default.1").String()
-		value := gjson.Get(log.Data, "default.2").Raw
+		source := gjson.Get(log.Data, "args.0").String()
+		target := gjson.Get(log.Data, "args.1").String()
+		value := gjson.Get(log.Data, "args.2").Raw
 		fmt.Println("AddTokenContract", source, target)
 		if source == "" || target == "" {
 			return
