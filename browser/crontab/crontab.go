@@ -77,17 +77,15 @@ func NewServer(dbAddr string, dbPort int, dbUser string, dbPassword string, rese
 	server.addGenisisblock()
 	server.storage.InitCurConfig()
 	_, server.rewardStorageDataHeight = server.storage.RewardTopBlockHeight()
-	server.consumeBlock(548153, 548152)
-
 	go server.ConsumeContractTransfer()
-	//notify.BUS.Subscribe(notify.BlockAddSucc, server.OnBlockAddSuccess)
+	notify.BUS.Subscribe(notify.BlockAddSucc, server.OnBlockAddSuccess)
 
 	server.blockRewardHeight = server.storage.TopBlockRewardHeight(mysql.Blockrewardtopheight)
 	server.blockTopHeight = server.storage.GetTopblock()
 	if server.blockRewardHeight > 0 {
 		server.blockRewardHeight += 1
 	}
-	//go server.loop()
+	go server.loop()
 	return server
 }
 
@@ -354,11 +352,7 @@ func (server *Crontab) consumeReward(localHeight uint64, pre uint64) {
 
 }
 func (server *Crontab) consumeBlock(localHeight uint64, pre uint64) {
-	fmt.Println("[server]  consumeBlock height:", localHeight)
 
-	if localHeight < 548145 {
-		return
-	}
 	fmt.Println("[server]  consumeBlock process height:", localHeight)
 	var maxHeight uint64
 	maxHeight = server.storage.GetTopblock()
@@ -438,8 +432,8 @@ func (crontab *Crontab) OnBlockAddSuccess(message notify.Message) error {
 		LocalHeight: bh.Height,
 	}
 	go crontab.Produce(data)
-	//go crontab.ProduceReward(data)
-	//go crontab.UpdateProtectNodeStatus()
+	go crontab.ProduceReward(data)
+	go crontab.UpdateProtectNodeStatus()
 	crontab.GochanPunishment(bh.Height)
 	return nil
 }
@@ -768,7 +762,7 @@ func (crontab *Crontab) dataCompensationProcess(notifyHeight uint64, notifyPreHe
 		browserlog.BrowserLog.Info("[Storage]  dataCompensationProcess start: ", notifyHeight, notifyPreHeight)
 
 		dbMaxHeight := crontab.blockTopHeight
-		if dbMaxHeight <= notifyPreHeight {
+		if dbMaxHeight > 0 && dbMaxHeight <= notifyPreHeight {
 			blockceil := core.BlockChainImpl.QueryBlockCeil(dbMaxHeight)
 			time := time.Now()
 			if blockceil != nil {

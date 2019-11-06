@@ -61,7 +61,7 @@ func NewDBMmanagement(dbAddr string, dbPort int, dbUser string, dbPassword strin
 	tablMmanagement.groupHeight, _ = tablMmanagement.storage.TopGroupHeight()
 	tablMmanagement.prepareGroupHeight, _ = tablMmanagement.storage.TopPrepareGroupHeight()
 	tablMmanagement.dismissGropHeight, _ = tablMmanagement.storage.TopDismissGroupHeight()
-	//go tablMmanagement.loop()
+	go tablMmanagement.loop()
 	return tablMmanagement
 }
 
