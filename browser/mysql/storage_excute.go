@@ -686,7 +686,7 @@ func (storage *Storage) AddTransactions(trans []*models.Transaction) bool {
 }
 
 func (storage *Storage) AddTokenContract(tran *models.Transaction, log *models.Log) {
-	fmt.Println(log)
+	fmt.Println("AddTokenContract", log)
 
 	tokenContracts := make([]*models.TokenContract, 0)
 	storage.db.Model(models.TokenContract{}).Where("contract_addr = ?", tran.ContractAddress).Find(&tokenContracts)
@@ -694,6 +694,7 @@ func (storage *Storage) AddTokenContract(tran *models.Transaction, log *models.L
 		source := gjson.Get(log.Data, "default.0").String()
 		target := gjson.Get(log.Data, "default.1").String()
 		value := gjson.Get(log.Data, "default.2").Raw
+		fmt.Println("AddTokenContract", source, target)
 		if source == "" || target == "" {
 			return
 		}
@@ -766,6 +767,7 @@ func (storage *Storage) AddTokenContract(tran *models.Transaction, log *models.L
 			Status:       0,
 			BlockHeight:  tran.BlockHeight,
 		}
+		fmt.Println("AddTokenTran", contract)
 		//update tokenContractTx and tokenContractUser
 		storage.AddTokenTran(contract)
 	}
