@@ -352,10 +352,12 @@ func (server *Crontab) consumeReward(localHeight uint64, pre uint64) {
 
 }
 func (server *Crontab) consumeBlock(localHeight uint64, pre uint64) {
+	fmt.Println("[server]  consumeBlock height:", localHeight)
+
 	if localHeight < 548145 {
 		return
 	}
-	fmt.Println("[server]  consumeBlock height:", localHeight)
+	fmt.Println("[server]  consumeBlock process height:", localHeight)
 	var maxHeight uint64
 	maxHeight = server.storage.GetTopblock()
 	blockDetail, _ := server.fetcher.ExplorerBlockDetail(localHeight)
@@ -764,7 +766,7 @@ func (crontab *Crontab) dataCompensationProcess(notifyHeight uint64, notifyPreHe
 		browserlog.BrowserLog.Info("[Storage]  dataCompensationProcess start: ", notifyHeight, notifyPreHeight)
 
 		dbMaxHeight := crontab.blockTopHeight
-		if dbMaxHeight > 0 && dbMaxHeight <= notifyPreHeight {
+		if dbMaxHeight <= notifyPreHeight {
 			blockceil := core.BlockChainImpl.QueryBlockCeil(dbMaxHeight)
 			time := time.Now()
 			if blockceil != nil {
