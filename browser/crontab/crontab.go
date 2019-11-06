@@ -77,8 +77,10 @@ func NewServer(dbAddr string, dbPort int, dbUser string, dbPassword string, rese
 	server.addGenisisblock()
 	server.storage.InitCurConfig()
 	_, server.rewardStorageDataHeight = server.storage.RewardTopBlockHeight()
+	server.consumeBlock(548153, 548152)
+
 	go server.ConsumeContractTransfer()
-	notify.BUS.Subscribe(notify.BlockAddSucc, server.OnBlockAddSuccess)
+	//notify.BUS.Subscribe(notify.BlockAddSucc, server.OnBlockAddSuccess)
 
 	server.blockRewardHeight = server.storage.TopBlockRewardHeight(mysql.Blockrewardtopheight)
 	server.blockTopHeight = server.storage.GetTopblock()
