@@ -9,7 +9,6 @@ import (
 	browserlog "github.com/zvchain/zvchain/browser/log"
 	"github.com/zvchain/zvchain/browser/models"
 	"github.com/zvchain/zvchain/browser/util"
-	"github.com/zvchain/zvchain/cmd/gzv/cli"
 	common2 "github.com/zvchain/zvchain/common"
 	"github.com/zvchain/zvchain/core"
 	"github.com/zvchain/zvchain/tvm"
@@ -701,7 +700,7 @@ func (storage *Storage) AddTokenContract(tran *models.Transaction, log *models.L
 		realValue := &big.Int{}
 		realValue.SetString(value, 10)
 		if len(tokenContracts) == 0 {
-			if !cli.IsTokenContract(common2.StringToAddress(tran.ContractAddress)) {
+			if !common.IsTokenContract(common2.StringToAddress(tran.ContractAddress)) {
 				return
 			}
 			fmt.Println("IsTokenContract,", tran)
