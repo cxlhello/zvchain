@@ -9,6 +9,8 @@ import (
 	"github.com/zvchain/zvchain/consensus/groupsig"
 	"github.com/zvchain/zvchain/core"
 	"github.com/zvchain/zvchain/middleware/types"
+	"github.com/zvchain/zvchain/tvm"
+	"strings"
 )
 
 type Fetcher struct {
@@ -22,6 +24,14 @@ type MortGage struct {
 	Identity             types.NodeIdentity `json:"identity"`
 	IdentityUpdateHeight uint64             `json:"identity_update_height"`
 }
+
+type LogData struct {
+	User  string
+	Args  []string
+	Group string
+	Value uint64
+}
+
 type Group struct {
 	Seed          common.Hash `json:"id"`
 	BeginHeight   uint64      `json:"begin_height"`
@@ -32,6 +42,9 @@ type Group struct {
 	GroupHeight   uint64      `json:"group_height"`
 }
 
+type ContractCall struct {
+	Hash string
+}
 type FronzenAndStakeFrom struct {
 	StakeFrom      string `json:"stake_from"`
 	ProposalFrozen uint64 `json:"proposal_frozen"`
@@ -58,7 +71,7 @@ func (api *Fetcher) ExplorerBlockDetail(height uint64) (*models.BlockDetail, err
 	for i, tx := range trans {
 		wrapper := chain.GetTransactionPool().GetReceipt(tx.Hash)
 		if wrapper != nil {
-			modelreceipt := convertReceipt(wrapper)
+			modelreceipt := convertReceipt(wrapper, block.Hash)
 			receipts[i] = modelreceipt
 			tx.Status = modelreceipt.Status
 		}
@@ -73,16 +86,40 @@ func (api *Fetcher) ExplorerBlockDetail(height uint64) (*models.BlockDetail, err
 	return bd, nil
 }
 
-func convertReceipt(receipt *types.Receipt) *models.Receipt {
+func convertReceipt(receipt *types.Receipt, blockHash string) *models.Receipt {
 	modelreceipt := &models.Receipt{
 		Status:            uint(receipt.Status),
 		CumulativeGasUsed: receipt.CumulativeGasUsed,
-		Logs:              nil,
+		Logs:              convertLogs(receipt.Logs, blockHash),
 		TxHash:            receipt.TxHash.Hex(),
 		ContractAddress:   receipt.ContractAddress.AddrPrefixString(),
 	}
 	return modelreceipt
 
+}
+
+func convertLogs(logs []*types.Log, blockHash string) []*models.Log {
+
+	if len(logs) > 0 {
+		modelsLogs := make([]*models.Log, 0)
+		newLog := &models.Log{}
+		for _, log := range logs {
+			newLog = &models.Log{
+				Address:     log.Address.AddrPrefixString(),
+				Topic:       log.Topic.Hex(),
+				Data:        string(log.Data),
+				BlockNumber: log.BlockNumber,
+				TxHash:      log.TxHash.Hex(),
+				TxIndex:     log.TxIndex,
+				BlockHash:   blockHash,
+				LogIndex:    log.Index,
+				Removed:     log.Removed,
+			}
+			modelsLogs = append(modelsLogs, newLog)
+		}
+		return modelsLogs
+	}
+	return nil
 }
 
 func ConvertGroup(g types.GroupI) *models.Group {
@@ -141,7 +178,6 @@ func convertBlockHeader(b *types.Block) *models.Block {
 		TransCount: uint64(len(b.Transactions)),
 		Random:     common.ToHex(bh.Random),
 		//Qn: mediator.Proc.CalcBlockHeaderQN(bh),
-
 	}
 	return block
 }
@@ -234,4 +270,61 @@ func (tm *Fetcher) Fetchbalance(addr string) float64 {
 	balance := common.RA2TAS(b.Uint64())
 
 	return balance
+}
+
+func QueryAccountData(addr string, key string, count int) (interface{}, error) {
+	addr = strings.TrimSpace(addr)
+	// input check
+	if !common.ValidateAddress(addr) {
+		return nil, fmt.Errorf("wrong address format")
+	}
+	address := common.StringToAddress(addr)
+
+	const MaxCountQuery = 100
+	if count <= 0 {
+		count = 0
+	} else if count > MaxCountQuery {
+		count = MaxCountQuery
+	}
+
+	chain := core.BlockChainImpl
+	state, err := chain.GetAccountDBByHash(chain.QueryTopBlock().Hash)
+	if err != nil {
+		return nil, err
+	}
+
+	var resultData interface{}
+	if count == 0 {
+		value := state.GetData(address, []byte(key))
+		if value != nil {
+			tmp := make(map[string]interface{})
+			tmp["value"] = tvm.VmDataConvert(value)
+			resultData = tmp
+		}
+	} else {
+		iter := state.DataIterator(address, []byte(key))
+		if iter != nil {
+			tmp := make([]map[string]interface{}, 0)
+			for iter.Next() {
+				k := string(iter.Key[:])
+				if !strings.HasPrefix(k, key) {
+					continue
+				}
+				v := tvm.VmDataConvert(iter.Value[:])
+				item := make(map[string]interface{}, 0)
+				item["key"] = k
+				item["value"] = v
+				tmp = append(tmp, item)
+				resultData = tmp
+				if len(tmp) >= count {
+					break
+				}
+			}
+		}
+	}
+	if resultData != nil {
+		return resultData, nil
+	} else {
+		return nil, nil
+	}
 }

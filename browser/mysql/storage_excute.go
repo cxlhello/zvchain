@@ -4,18 +4,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/jinzhu/gorm"
+	"github.com/tidwall/gjson"
+	"github.com/zvchain/zvchain/browser/common"
 	browserlog "github.com/zvchain/zvchain/browser/log"
 	"github.com/zvchain/zvchain/browser/models"
+	"github.com/zvchain/zvchain/browser/util"
+	"github.com/zvchain/zvchain/cmd/gzv/cli"
+	common2 "github.com/zvchain/zvchain/common"
+	"github.com/zvchain/zvchain/core"
+	"github.com/zvchain/zvchain/tvm"
+	"math/big"
 	"sort"
 	"time"
 )
 
 const (
-	Blockrewardtopheight = "block_reward.top_block_height"
-	Blocktopheight       = "block.top_block_height"
-	Blockcurblockheight  = "block.cur_block_height"
-	BlockDeleteCount     = "block.delete_count"
-	Blockcurtranheight   = "block.cur_tran_height"
+	Blockrewardtopheight    = "block_reward.top_block_height"
+	Blocktopheight          = "block.top_block_height"
+	BlockStakeMappingHeight = "block.stake_mapping_height"
+	Blockcurblockheight     = "block.cur_block_height"
+	BlockDeleteCount        = "block.delete_count"
+	Blockcurtranheight      = "block.cur_tran_height"
 
 	GroupTopHeight        = "group.top_group_height"
 	PrepareGroupTopHeight = "group.top_prepare_group_height"
@@ -318,6 +327,7 @@ func (storage *Storage) IncrewardBlockheightTosys(tx *gorm.DB, variable string, 
 func errors(error error) bool {
 	if error != nil {
 		fmt.Println("update/add error", error)
+		browserlog.BrowserLog.Info("update/add error", error)
 		return false
 	}
 	return true
@@ -326,6 +336,16 @@ func errors(error error) bool {
 
 func (storage *Storage) AddBlockHeightSystemconfig(sys *models.Sys) bool {
 	hight, ifexist := storage.TopBlockHeight()
+	if hight == 0 && ifexist == false {
+		storage.AddObjects(&sys)
+	} else {
+		storage.db.Model(&sys).Where("variable=?", sys.Variable).UpdateColumn("value", sys.Value)
+	}
+	return true
+}
+
+func (storage *Storage) BlockStakeMappingHeightCfg(sys *models.Sys) bool {
+	hight, ifexist := storage.TopStakeMappingHeight()
 	if hight == 0 && ifexist == false {
 		storage.AddObjects(&sys)
 	} else {
@@ -484,6 +504,19 @@ func (storage *Storage) TopBlockHeight() (uint64, bool) {
 	return 0, false
 }
 
+func (storage *Storage) TopStakeMappingHeight() (uint64, bool) {
+	if storage.db == nil {
+		return 0, false
+	}
+	sys := make([]models.Sys, 0, 1)
+	storage.db.Limit(1).Where("variable = ?", BlockStakeMappingHeight).Find(&sys)
+	if len(sys) > 0 {
+		//storage.topBlockHigh = sys[0].Value
+		return sys[0].Value, true
+	}
+	return 0, false
+}
+
 func (storage *Storage) GetCurCount(variable string) uint64 {
 	var countToday uint64
 	if variable == Blockcurblockheight {
@@ -556,11 +589,37 @@ func (storage *Storage) AddGroup(group *models.Group) bool {
 		fmt.Println("[Storage] storage.db == nil")
 		return false
 	}
+	data := make([]*models.Group, 0, 0)
+	storage.db.Limit(1).Where("id = ?", group.Id).Find(&data)
+	if len(data) > 0 {
+		return false
+	}
 
 	if storage.topGroupHigh < group.Height {
 		storage.topGroupHigh = group.Height
 	}
 	storage.db.Create(&group)
+	return true
+}
+func (storage *Storage) AddContractTransaction(contract *models.ContractTransaction) bool {
+	if storage.db == nil {
+		fmt.Println("[Storage] storage.db == nil")
+		return false
+	}
+	storage.db.Create(&contract)
+	return true
+}
+func (storage *Storage) AddContractCallTransaction(contract *models.ContractCallTransaction) bool {
+	if storage.db == nil {
+		fmt.Println("[Storage] storage.db == nil")
+		return false
+	}
+	data := make([]*models.ContractCallTransaction, 0, 0)
+	storage.db.Limit(1).Where("tx_hash = ?", contract.TxHash).Find(&data)
+	if len(data) > 0 {
+		return false
+	}
+	storage.db.Create(&contract)
 	return true
 }
 
@@ -627,6 +686,246 @@ func (storage *Storage) AddTransactions(trans []*models.Transaction) bool {
 	return true
 }
 
+func (storage *Storage) AddTokenContract(tran *models.Transaction, log *models.Log) {
+	fmt.Println(log)
+
+	tokenContracts := make([]*models.TokenContract, 0)
+	storage.db.Model(models.TokenContract{}).Where("contract_addr = ?", tran.ContractAddress).Find(&tokenContracts)
+	if log != nil {
+		source := gjson.Get(log.Data, "default.0").String()
+		target := gjson.Get(log.Data, "default.1").String()
+		value := gjson.Get(log.Data, "default.2").Raw
+		if source == "" || target == "" {
+			return
+		}
+		realValue := &big.Int{}
+		realValue.SetString(value, 10)
+		if len(tokenContracts) == 0 {
+			if !cli.IsTokenContract(common2.StringToAddress(tran.ContractAddress)) {
+				return
+			}
+			fmt.Println("IsTokenContract,", tran)
+
+			//create
+			chain := core.BlockChainImpl
+			db, err := chain.LatestAccountDB()
+			if err != nil {
+				browserlog.BrowserLog.Error("AddTokenContract: ", err)
+				return
+			}
+
+			tokenContract := models.TokenContract{}
+			//mapInterface := make(map[string]interface{})
+			keyMap := []string{"name", "symbol", "decimal"}
+			for times, key := range keyMap {
+				data := db.GetData(common2.StringToAddress(tran.ContractAddress), []byte(key))
+				if v, ok := tvm.VmDataConvert(data).(string); ok {
+					switch times {
+					case 0:
+						tokenContract.Name = v
+					case 1:
+						tokenContract.Symbol = v
+					}
+				}
+				if v, ok := tvm.VmDataConvert(data).(int64); ok {
+					switch times {
+					case 2:
+						tokenContract.Decimal = v
+					}
+				}
+			}
+			tokenContract.ContractAddr = tran.ContractAddress
+			if util.ValidateAddress(source) && util.ValidateAddress(target) {
+				if source == target {
+					tokenContract.HolderNum = 1
+				} else {
+					tokenContract.HolderNum = 2
+				}
+			}
+
+			src := ""
+			storage.db.Model(models.Transaction{}).Select("source").Where("contract_address = ?", common2.StringToAddress(tran.ContractAddress)).Row().Scan(&src)
+			tokenContract.Creator = src
+			tokenContract.TransferTimes = 1
+			storage.db.Create(&tokenContract)
+
+		} else { //update
+			storage.db.Model(models.TokenContract{}).Where("contract_addr = ?", tran.ContractAddress).UpdateColumn("transfer_times", gorm.Expr("transfer_times + ?"), 1)
+			users := make([]*models.TokenContractUser, 0)
+			storage.db.Model(models.TokenContractUser{}).Where("address = ?", target).Find(&users)
+			if len(users) == 0 {
+				storage.db.Model(models.TokenContract{}).Where("contract_addr = ?", tran.ContractAddress).UpdateColumn("holder_num", gorm.Expr("holder_num + ?"), 1)
+			}
+		}
+		contract := &models.TokenContractTransaction{
+			ContractAddr: "",
+			Source:       source,
+			Target:       target,
+			Value:        realValue.String(),
+			TxHash:       tran.Hash,
+			TxType:       0,
+			Status:       0,
+			BlockHeight:  tran.BlockHeight,
+		}
+		//update tokenContractTx and tokenContractUser
+		storage.AddTokenTran(contract)
+	}
+
+}
+
+func (storage *Storage) AddTokenTran(tokenContract *models.TokenContractTransaction) bool {
+	fmt.Println("AddTokenTran,", tokenContract)
+
+	if storage.db == nil {
+		fmt.Println("[Storage] storage.db == nil")
+		return false
+	}
+	tx := storage.db.Begin()
+	isSuccess := true
+	defer func() {
+		if isSuccess {
+			tx.Commit()
+		} else {
+			tx.Rollback()
+		}
+	}()
+
+	if !errors(tx.Create(&tokenContract).Error) {
+		isSuccess = false
+		return isSuccess
+	}
+	isSuccess = storage.AddTokenUser(tx, tokenContract)
+	return isSuccess
+}
+
+func getUseValue(tokenaddr string, useraddr string) string {
+	if tokenaddr == "" && useraddr == "" {
+		return big.NewInt(0).String()
+	}
+	key := fmt.Sprintf("balanceOf@%s", useraddr)
+	resultData, _ := common.QueryAccountData(tokenaddr, key, 0)
+	result := resultData.(map[string]interface{})
+	value := big.NewInt(result["value"].(int64))
+	return value.String()
+}
+
+/*
+ add tokencontract user info
+*/
+func (storage *Storage) AddTokenUser(tx *gorm.DB, tokenContract *models.TokenContractTransaction) bool {
+	if storage.db == nil {
+		fmt.Println("[Storage] storage.db == nil")
+		return false
+	}
+	isSuccess := true
+
+	addressList := []string{tokenContract.Source, tokenContract.Target}
+	users := make([]models.TokenContractUser, 0, 0)
+	tx.Where("address in (?) and contract_addr = ?", addressList, tokenContract.ContractAddr).Find(&users)
+	createUser := make([]string, 0)
+	set := &util.Set{}
+	if len(users) > 0 {
+		for _, user := range users {
+			set.Add(user.Address)
+			value := getUseValue(tokenContract.ContractAddr, user.Address)
+			if !errors(tx.Model(&models.TokenContractUser{}).
+				Where("contract_addr = ? and address = ? ", tokenContract.ContractAddr, user.Address).Update("value", value).Error) {
+				isSuccess = false
+				return isSuccess
+			}
+		}
+		for _, user := range addressList {
+			if _, ok := set.M[user]; !ok {
+				createUser = append(createUser, user)
+			}
+		}
+	} else {
+		createUser = addressList
+	}
+	if len(createUser) > 0 {
+		for _, user := range createUser {
+			user := &models.TokenContractUser{
+				ContractAddr: tokenContract.ContractAddr,
+				Address:      user,
+				Value:        getUseValue(tokenContract.ContractAddr, user),
+			}
+			if !errors(tx.Create(&user).Error) {
+				isSuccess = false
+				return isSuccess
+			}
+		}
+	}
+	return isSuccess
+
+}
+
+func (storage *Storage) AddLogs(receipts []*models.Receipt, trans []*models.Transaction, old bool) bool {
+	//fmt.Println("[Storage] add receipt ")
+	if storage.db == nil {
+		fmt.Println("[Storage] storage.db == nil")
+		return false
+	}
+	maptran := make(map[string]*models.Transaction)
+	for _, tr := range trans {
+		maptran[tr.Hash] = tr
+	}
+	timeBegin := time.Now()
+
+	//tx := storage.db.Begin()
+	for i := 0; i < len(receipts); i++ {
+		if receipts[i].Logs != nil {
+			for j := 0; j < len(receipts[i].Logs); j++ {
+				if !errors(storage.db.Create(&receipts[i].Logs[j]).Error) {
+					transql := fmt.Sprintf("DELETE  FROM logs WHERE  block_number = '%d' and tx_index = '%d' and index='%d'",
+						receipts[i].Logs[j].BlockNumber, receipts[i].Logs[j].TxIndex, receipts[i].Logs[j].LogIndex)
+					browserlog.BrowserLog.Info("AddLogsDELETE", transql)
+					storage.db.Exec(transql)
+					storage.db.Create(&receipts[i].Logs[j])
+				}
+				if old && receipts[i].Logs[j] != nil && receipts[i].Logs[j].Data != "" {
+					decodeBytes := receipts[i].Logs[j].Data
+					fmt.Println("[Storage]  AddContractTransaction ", receipts[i].Logs[j].Data)
+					if decodeBytes != "" {
+						//log := string (decodeBytes)
+						logData := &common.LogData{}
+						if json.Unmarshal([]byte(decodeBytes), logData) == nil {
+							value := logData.Value
+							contract := &models.ContractTransaction{
+								ContractCode: receipts[i].Logs[j].Address,
+								Address:      logData.User,
+								Value:        value,
+								TxHash:       receipts[i].Logs[j].TxHash,
+								TxType:       0,
+								Status:       1,
+								BlockHeight:  receipts[i].Logs[j].BlockNumber,
+							}
+							storage.AddContractTransaction(contract)
+							contractCall := &models.ContractCallTransaction{
+								ContractCode: receipts[i].Logs[j].Address,
+								TxHash:       receipts[i].Logs[j].TxHash,
+								TxType:       0,
+								BlockHeight:  receipts[i].Logs[j].BlockNumber,
+								Status:       1,
+							}
+							if maptran[receipts[i].Logs[j].TxHash] != nil {
+								contractCall.CurTime = maptran[receipts[i].Logs[j].TxHash].CurTime
+							}
+							storage.AddContractCallTransaction(contractCall)
+
+						}
+					}
+
+				}
+			}
+		}
+
+	}
+	//tx.Commit()
+	fmt.Println("[Storage]  AddLogs cost: ", time.Since(timeBegin))
+
+	return true
+}
+
 func (storage *Storage) AddReceipts(receipts []*models.Receipt) bool {
 	//fmt.Println("[Storage] add receipt ")
 	if storage.db == nil {
@@ -666,6 +965,35 @@ func (storage *Storage) browserTopBlockHeight() uint64 {
 	return 0
 }
 
+func (storage *Storage) GetContractByHash(hash string) []string {
+	if storage.db == nil {
+		return nil
+	}
+	rows, _ := storage.db.Model(models.ContractTransaction{}).Where("tx_hash = ?", hash).Select("address").Rows() // (*sql.Rows, error)
+	defer rows.Close()
+	s := make([]string, 0, 0)
+	var addr string
+	for rows.Next() {
+		rows.Scan(&addr)
+		s = append(s, addr)
+	}
+	return s
+}
+func (storage *Storage) GetContractAddressAll() []string {
+	if storage.db == nil {
+		return nil
+	}
+	rows, _ := storage.db.Model(models.ContractTransaction{}).Select("distinct(address) as addr").Rows() // (*sql.Rows, error)
+	defer rows.Close()
+	s := make([]string, 0, 0)
+	var addr string
+	for rows.Next() {
+		rows.Scan(&addr)
+		s = append(s, addr)
+	}
+	return s
+}
+
 func (storage *Storage) RewardTopBlockHeight() (uint64, uint64) {
 	if storage.db == nil {
 		return 0, 0
@@ -691,6 +1019,17 @@ func (storage *Storage) GetTopblock() uint64 {
 	return maxHeight
 }
 
+func (storage *Storage) UpdateContractTransaction(txHash string, curTime time.Time) {
+	contractSql := fmt.Sprintf("UPDATE contract_transactions SET status = 1 WHERE tx_hash = '%s'", txHash)
+	//contractcallSql := fmt.Sprintf("UPDATE contract_call_transactions SET status = 1 WHERE tx_hash = '%s'", txHash)
+	attrs := make(map[string]interface{})
+	attrs["status"] = 1
+	attrs["cur_time"] = curTime
+	storage.db.Model(&models.ContractCallTransaction{}).Where("tx_hash = ?", txHash).Updates(attrs)
+	storage.db.Exec(contractSql)
+	//storage.db.Exec(contractcallSql)
+
+}
 func (storage *Storage) DeleteForkblock(preHeight uint64, localHeight uint64, curTime time.Time) (err error) {
 
 	defer func() { // 必须要先声明defer，否则不能捕获到panic异常
@@ -701,9 +1040,14 @@ func (storage *Storage) DeleteForkblock(preHeight uint64, localHeight uint64, cu
 	blockSql := fmt.Sprintf("DELETE  FROM blocks WHERE height > %d", preHeight)
 	transactionSql := fmt.Sprintf("DELETE  FROM transactions WHERE block_height > %d", preHeight)
 	receiptSql := fmt.Sprintf("DELETE  FROM receipts WHERE block_height > %d", preHeight)
+	logSql := fmt.Sprintf("DELETE  FROM logs WHERE block_number > %d", preHeight)
+	contractTransSql := fmt.Sprintf("DELETE  FROM contract_transactions WHERE block_height > %d", preHeight)
 	blockCount := storage.db.Exec(blockSql)
 	transactionCount := storage.db.Exec(transactionSql)
 	storage.db.Exec(receiptSql)
+	storage.db.Exec(logSql)
+	go storage.db.Exec(contractTransSql)
+
 	if GetTodayStartTs(curTime).Equal(GetTodayStartTs(time.Now())) {
 		storage.UpdateSysConfigValue(Blockcurblockheight, blockCount.RowsAffected, false)
 		storage.UpdateSysConfigValue(Blockcurtranheight, transactionCount.RowsAffected, false)

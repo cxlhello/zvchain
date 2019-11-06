@@ -3,6 +3,7 @@ package crontab
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/jinzhu/gorm"
 	"github.com/zvchain/zvchain/browser"
 	common2 "github.com/zvchain/zvchain/browser/common"
 	browserlog "github.com/zvchain/zvchain/browser/log"
@@ -14,6 +15,7 @@ import (
 	"github.com/zvchain/zvchain/core/group"
 	"github.com/zvchain/zvchain/middleware/notify"
 	"github.com/zvchain/zvchain/middleware/types"
+	"github.com/zvchain/zvchain/tvm"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -21,7 +23,15 @@ import (
 )
 
 const (
-	checkInterval = time.Second * 10
+	check10SecInterval = time.Second * 10
+	check30MinInterval = time.Minute * 30
+
+	turnoverKey = "turnover"
+	cpKey       = "checkpoint"
+)
+
+var (
+	GlobalCP uint64
 )
 
 const (
@@ -67,6 +77,7 @@ func NewServer(dbAddr string, dbPort int, dbUser string, dbPassword string, rese
 	server.addGenisisblock()
 	server.storage.InitCurConfig()
 	_, server.rewardStorageDataHeight = server.storage.RewardTopBlockHeight()
+	go server.ConsumeContractTransfer()
 	notify.BUS.Subscribe(notify.BlockAddSucc, server.OnBlockAddSuccess)
 
 	server.blockRewardHeight = server.storage.TopBlockRewardHeight(mysql.Blockrewardtopheight)
@@ -74,29 +85,37 @@ func NewServer(dbAddr string, dbPort int, dbUser string, dbPassword string, rese
 	if server.blockRewardHeight > 0 {
 		server.blockRewardHeight += 1
 	}
-	go server.loop()
+	//go server.loop()
 	return server
 }
 
 func (crontab *Crontab) loop() {
 	var (
-		check = time.NewTicker(checkInterval)
+		check10Sec = time.NewTicker(check10SecInterval)
+		check30Min = time.NewTicker(check30MinInterval)
 	)
-	defer check.Stop()
+	defer check10Sec.Stop()
+	go crontab.fetchOldLogs()
+	go crontab.fetchOldReceiptToTransaction()
 	go crontab.fetchPoolVotes()
 	go crontab.fetchGroups()
+	go crontab.fetchOldConctactCreate()
 
 	go crontab.fetchBlockRewards()
 	go crontab.Consume()
 	go crontab.ConsumeReward()
+	go crontab.UpdateTurnOver()
+	go crontab.UpdateCheckPoint()
 
 	for {
 		select {
-		case <-check.C:
+		case <-check10Sec.C:
 			go crontab.fetchPoolVotes()
 			go crontab.fetchBlockRewards()
 			go crontab.fetchGroups()
-
+			go crontab.UpdateCheckPoint()
+		case <-check30Min.C:
+			go crontab.UpdateTurnOver()
 		}
 	}
 }
@@ -333,6 +352,9 @@ func (server *Crontab) consumeReward(localHeight uint64, pre uint64) {
 
 }
 func (server *Crontab) consumeBlock(localHeight uint64, pre uint64) {
+	if localHeight < 548145 {
+		return
+	}
 	fmt.Println("[server]  consumeBlock height:", localHeight)
 	var maxHeight uint64
 	maxHeight = server.storage.GetTopblock()
@@ -343,6 +365,7 @@ func (server *Crontab) consumeBlock(localHeight uint64, pre uint64) {
 		}
 		if server.storage.AddBlock(&blockDetail.Block) {
 			trans := make([]*models.Transaction, 0, 0)
+			transContract := make([]*models.Transaction, 0, 0)
 			for i := 0; i < len(blockDetail.Trans); i++ {
 				tran := server.fetcher.ConvertTempTransactionToTransaction(blockDetail.Trans[i])
 				tran.BlockHash = blockDetail.Block.Hash
@@ -352,6 +375,16 @@ func (server *Crontab) consumeBlock(localHeight uint64, pre uint64) {
 				if tran.Type == types.TransactionTypeContractCreate {
 					tran.ContractAddress = blockDetail.Receipts[i].ContractAddress
 				}
+				if tran.Type == types.TransactionTypeContractCall {
+					transContract = append(transContract, tran)
+
+					//是否有transfer log
+					for _, log := range blockDetail.Receipts[i].Logs {
+						if common.HexToHash(log.Topic) == common.BytesToHash(common.Sha256([]byte("transfer"))) {
+							server.storage.AddTokenContract(tran, log)
+						}
+					}
+				}
 				trans = append(trans, tran)
 			}
 			server.storage.AddTransactions(trans)
@@ -360,18 +393,38 @@ func (server *Crontab) consumeBlock(localHeight uint64, pre uint64) {
 				blockDetail.Receipts[i].BlockHeight = blockDetail.Block.Height
 			}
 			server.storage.AddReceipts(blockDetail.Receipts)
-
+			server.storage.AddLogs(blockDetail.Receipts, trans, false)
+			server.ProcessContract(transContract)
 		}
-
 	}
 	//server.isFetchingBlocks = false
 
 }
 
+func (crontab *Crontab) ProcessContract(trans []*models.Transaction) {
+	chain := core.BlockChainImpl
+	for _, tx := range trans {
+		contract := &common2.ContractCall{
+			Hash: tx.Hash,
+		}
+		addressList := crontab.storage.GetContractByHash(tx.Hash)
+		wrapper := chain.GetTransactionPool().GetReceipt(common.HexToHash(tx.Hash))
+		//contract address
+		if wrapper.Status == 0 && len(addressList) > 0 {
+			go crontab.ConsumeContract(contract, tx.Hash, tx.CurTime)
+		}
+	}
+
+}
+func (tm *Crontab) ConsumeContract(data *common2.ContractCall, hash string, curtime time.Time) {
+	tm.storage.UpdateContractTransaction(hash, curtime)
+	fmt.Println("for UpdateContractTransaction", util.ObjectTojson(hash))
+	browserlog.BrowserLog.Info("for ConsumeContract:", util.ObjectTojson(data))
+}
+
 func (crontab *Crontab) OnBlockAddSuccess(message notify.Message) error {
 	block := message.GetData().(*types.Block)
 	bh := block.Header
-
 	preHash := bh.PreHash
 	preBlock := core.BlockChainImpl.QueryBlockByHash(preHash)
 	preHight := preBlock.Header.Height
@@ -381,7 +434,8 @@ func (crontab *Crontab) OnBlockAddSuccess(message notify.Message) error {
 		LocalHeight: bh.Height,
 	}
 	go crontab.Produce(data)
-	go crontab.ProduceReward(data)
+	//go crontab.ProduceReward(data)
+	//go crontab.UpdateProtectNodeStatus()
 	crontab.GochanPunishment(bh.Height)
 	return nil
 }
@@ -454,10 +508,38 @@ func (crontab *Crontab) Consume() {
 			crontab.consumeBlock(data.LocalHeight, data.PreHeight)
 			fmt.Println("for Consume", util.ObjectTojson(data))
 			browserlog.BrowserLog.Info("for Consume", util.ObjectTojson(data))
-
 		}
 	}
 }
+func (crontab *Crontab) ConsumeContractTransfer() {
+
+	var ok = true
+	for ok {
+		select {
+		case data := <-tvm.ContractTransferData:
+			contractTransaction := &models.ContractTransaction{
+				ContractCode: data.ContractCode,
+				Address:      data.Address,
+				Value:        data.Value,
+				TxHash:       data.TxHash,
+				TxType:       0,
+				Status:       0,
+				BlockHeight:  data.BlockHeight,
+			}
+			fmt.Println("ConsumeContractTransfer:", data.Address, ",contractcode:", data.ContractCode, ",json:", util.ObjectTojson(contractTransaction))
+			mysql.DBStorage.AddContractTransaction(contractTransaction)
+			contractCall := &models.ContractCallTransaction{
+				ContractCode: data.ContractCode,
+				TxHash:       data.TxHash,
+				TxType:       0,
+				BlockHeight:  data.BlockHeight,
+				Status:       0,
+			}
+			mysql.DBStorage.AddContractCallTransaction(contractCall)
+		}
+	}
+}
+
 func (crontab *Crontab) ConsumeReward() {
 
 	var ok = true
@@ -472,6 +554,209 @@ func (crontab *Crontab) ConsumeReward() {
 		}
 	}
 }
+
+func (crontab *Crontab) UpdateTurnOver() {
+	filterAddr := []string{
+		"zv88200d8e51a63301911c19f72439cac224afc7076ee705391c16f203109c0ccf",
+		"zv1d676136438ef8badbc59c89bae08ea3cdfccbbe8f4b22ac8d47361d6a3d510d",
+		"zvd675bea39b6f329919fc73c729292c7d8a3d305fb628e47f95986ec725c43824",
+		"zvc2a3709ec6f183132faf8bacbc34cdb340eb0a45a69e9d4c26290e93829de64b",
+	}
+
+	var turnover float64
+	crontab.storage.GetDB().Model(&models.AccountList{}).Select("(sum(total_stake)-sum(other_stake)+sum(balance)+sum(stake_to_other)) as turnover").Where("address not in (?)", filterAddr).Row().Scan(&turnover)
+	turnoverString := strconv.FormatFloat(turnover, 'E', -1, 64)
+
+	type TurnoverDB struct {
+		turnover string
+	}
+	configs := make([]*models.Config, 0)
+	crontab.storage.GetDB().Model(&models.Config{}).Where("variable = ?", turnoverKey).Find(&configs)
+	if len(configs) > 0 {
+		crontab.storage.GetDB().Model(&models.Config{}).Where("variable = ?", turnoverKey).Update("value", turnoverString)
+	} else {
+		config := models.Config{
+			Variable: turnoverKey,
+			Value:    turnoverString,
+		}
+		crontab.storage.GetDB().Model(&models.Config{}).Create(&config)
+	}
+}
+
+func (crontab *Crontab) UpdateCheckPoint() {
+	checkpoint := core.BlockChainImpl.LatestCheckPoint()
+	if checkpoint.Height != 0 {
+		GlobalCP = checkpoint.Height
+		configs := make([]*models.Config, 0)
+		crontab.storage.GetDB().Model(&models.Config{}).Where("variable = ?", cpKey).Find(&configs)
+		if len(configs) > 0 {
+			crontab.storage.GetDB().Model(&models.Config{}).Where("variable = ?", cpKey).Update("value", strconv.FormatUint(GlobalCP, 10))
+		} else {
+			config := models.Config{
+				Variable: cpKey,
+				Value:    strconv.FormatUint(GlobalCP, 10),
+			}
+			crontab.storage.GetDB().Model(&models.Config{}).Create(&config)
+		}
+	}
+}
+
+func (tm *Crontab) fetchContractAccount() {
+	AddressCacheList := tm.storage.GetContractAddressAll()
+	for _, address := range AddressCacheList {
+		accounts := &models.AccountList{}
+		targetAddrInfo := tm.storage.GetAccountById(address)
+		//不存在账号
+		if targetAddrInfo == nil || len(targetAddrInfo) < 1 {
+			accounts.Address = address
+			//accounts.TotalTransaction = totalTx
+			accounts.Balance = tm.fetcher.Fetchbalance(address)
+			if !tm.storage.AddObjects(accounts) {
+				return
+			}
+			//存在账号
+		} else {
+			accounts.Address = address
+			if !tm.storage.UpdateAccountbyAddress(accounts, map[string]interface{}{"total_transaction": gorm.Expr("total_transaction + ?", 0), "balance": tm.fetcher.Fetchbalance(address)}) {
+				return
+			}
+
+		}
+		//update stake
+	}
+
+}
+func (crontab *Crontab) fetchOldLogs() {
+
+	logs := make([]*models.Log, 0)
+	crontab.storage.GetDB().Model(&models.Log{}).Limit(1).Find(&logs)
+	if len(logs) == 0 {
+		txs := make([]*models.Transaction, 0)
+		crontab.storage.GetDB().Model(&models.Transaction{}).Where("type = ?", types.TransactionTypeContractCall).Find(&txs)
+		if len(txs) > 0 {
+			for _, tx := range txs {
+				blockDetail, _ := crontab.fetcher.ExplorerBlockDetail(tx.BlockHeight)
+				if blockDetail != nil {
+					for i := 0; i < len(blockDetail.Receipts); i++ {
+						blockDetail.Receipts[i].BlockHash = blockDetail.Block.Hash
+						blockDetail.Receipts[i].BlockHeight = blockDetail.Block.Height
+					}
+					trans := make([]*models.Transaction, 0, 0)
+					for i := 0; i < len(blockDetail.Trans); i++ {
+						tran := crontab.fetcher.ConvertTempTransactionToTransaction(blockDetail.Trans[i])
+						tran.BlockHash = blockDetail.Block.Hash
+						tran.BlockHeight = blockDetail.Block.Height
+						tran.CurTime = blockDetail.Block.CurTime
+						trans = append(trans, tran)
+					}
+					crontab.storage.AddLogs(blockDetail.Receipts, trans, true)
+				}
+			}
+		}
+	}
+	crontab.fetchContractAccount()
+}
+
+func (crontab *Crontab) fetchOldConctactCreate() {
+
+	logs := make([]*models.Log, 0)
+	crontab.storage.GetDB().Model(&models.Transaction{}).Limit(1).Where("contract_address <> ? or contract_address <> ?", "", nil)
+	if len(logs) == 0 {
+		receipts := make([]*models.Receipt, 0)
+		crontab.storage.GetDB().Model(&models.Receipt{}).Where("type = ?", types.TransactionTypeContractCreate).Find(&receipts)
+
+		for _, receipt := range receipts {
+			crontab.storage.GetDB().Model(&models.Transaction{}).Where("hash = ?", receipt.TxHash).Update("contract_address", receipt.ContractAddress)
+		}
+	}
+}
+
+func (crontab *Crontab) fetchOldReceiptToTransaction() {
+	trans := make([]*models.Transaction, 0)
+	crontab.storage.GetDB().Model(&models.Transaction{}).Not("type = ?", types.TransactionTypeReward).Where("cumulative_gas_used = ?", 0).Last(&trans)
+	if len(trans) > 0 {
+		type Tx struct {
+			Hash string
+			Type uint64
+		}
+		var tx Tx
+
+		receipts := make([]*models.Receipt, 0)
+
+		for i := trans[0].CurIndex; i > 0; i-- {
+			crontab.storage.GetDB().Model(&models.Transaction{}).Limit(1).Select("hash,type").Where("cur_index = ?", i).Scan(&tx)
+			if tx != (Tx{}) {
+				crontab.storage.GetDB().Model(&models.Receipt{}).Where("tx_hash = ?", tx.Hash).Limit(1).Find(&receipts)
+				if len(receipts) > 0 {
+					if tx.Type == types.TransactionTypeReward {
+						continue
+					}
+					if tx.Type != types.TransactionTypeContractCreate {
+						//只更新cumulative_gas_used 字段
+						crontab.storage.GetDB().Model(&models.Transaction{}).Where("cur_index = ?", i).Update("cumulative_gas_used", receipts[0].CumulativeGasUsed)
+					} else {
+						//contract_address字段和cumulative_gas_used 都更新
+						crontab.storage.GetDB().Model(&models.Transaction{}).Where("cur_index = ?", i).Updates(map[string]interface{}{
+							"cumulative_gas_used": receipts[0].CumulativeGasUsed,
+							"contract_address":    receipts[0].ContractAddress,
+						})
+					}
+				}
+			}
+		}
+	}
+}
+
+////todo
+//func (crontab *Crontab) fetchOldStakeInfo() {
+//
+//	filterAddrs := []string{
+//		"zv96ea1d09221beb7c97edcda812736fd58f44f2add466f36793fac481a94f5710",
+//		"zv5de43446effa9bf38bff2cc8359b5ae05822e5a94bd953bfe07fbde6461d545a",
+//		"zv426c91a09fef18d953687e89535a0161aa081c31a562b2a5902239c8030904a9",
+//		"zvdfdac30bafeeba0825c77389b03089d5711bce48610b7c106658b0776abfd05b",
+//	}
+//
+//	trans := make([]*models.Transaction, 0)
+//	crontab.storage.GetDB().Model(&models.Transaction{}).Where("source in (?) and type in (?)", filterAddrs, []int{types.TransactionTypeStakeAdd, types.TransactionTypeStakeRefund}).Find(&trans)
+//	if len(trans) > 0 {
+//		wg := sync.WaitGroup{}
+//		wg.Add(len(trans))
+//		for _, tran := range trans {
+//			go func(tran *models.Transaction) {
+//				defer wg.Done()
+//				if tran.Source != tran.Target{
+//					if tran.Type == types.TransactionTypeStakeAdd{
+//
+//					}else if tran.Type ==types.TransactionTypeStakeRefund{
+//
+//					}
+//				}
+//			}(tran)
+//		}
+//		wg.Wait()
+//	}
+//}
+
+// 更新守护节点和矿池状态
+func (crontab *Crontab) UpdateProtectNodeStatus() {
+
+	/*expiredNodes := core.ExpiredGuardNodes
+	if len(expiredNodes) > 0 {
+		// 更新守护节点状态
+		protectNodes := make([]*models.AccountList, 0)
+		for _, node := range expiredNodes {
+			crontab.storage.GetDB().Model(&models.AccountList{}).Where("address = ?", node.AddrPrefixString()).Limit(1).Find(&protectNodes)
+			if len(protectNodes) > 0 {
+				browser.UpdateAccountStake(protectNodes[0], 0, crontab.storage)
+			}
+		}
+
+		// 更新矿池状态
+		browser.UpdatePoolStatus(crontab.storage)
+	}*/
+}
+
 func (crontab *Crontab) dataCompensationProcess(notifyHeight uint64, notifyPreHeight uint64) {
 	timenow := time.Now()
 	if !crontab.isInited {

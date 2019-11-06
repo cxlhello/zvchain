@@ -28,6 +28,8 @@ const (
 )
 const PageSize uint64 = 20
 
+var DBStorage *Storage
+
 type Storage struct {
 	db                        *gorm.DB
 	dbAddr                    string
@@ -44,15 +46,17 @@ type Storage struct {
 }
 
 func NewStorage(dbAddr string, dbPort int, dbUser string, dbPassword string, reset bool, resetcrontab bool) *Storage {
-
-	storage := &Storage{
+	if DBStorage != nil {
+		return DBStorage
+	}
+	DBStorage = &Storage{
 		dbAddr:     dbAddr,
 		dbPort:     dbPort,
 		dbUser:     dbUser,
 		dbPassword: dbPassword,
 	}
-	storage.Init(reset, resetcrontab)
-	return storage
+	DBStorage.Init(reset, resetcrontab)
+	return DBStorage
 }
 
 func (storage *Storage) Init(reset bool, resetcrontab bool) {
@@ -60,7 +64,7 @@ func (storage *Storage) Init(reset bool, resetcrontab bool) {
 		return
 	}
 	//args := fmt.Sprintf("root:Jobs1955!@tcp(119.23.205.254:3306)/tas?charset=utf8&parseTime=True&loc=Local")
-	args := fmt.Sprintf("%s:%s@tcp(%s:%d)/tas?charset=utf8&parseTime=True&loc=Local",
+	args := fmt.Sprintf("%s:%s@tcp(%s:%d)/test?charset=utf8&parseTime=True&loc=Local",
 		storage.dbUser,
 		storage.dbPassword,
 		storage.dbAddr,
@@ -84,9 +88,17 @@ func (storage *Storage) Init(reset bool, resetcrontab bool) {
 		db.DropTable(&models.Sys{})
 		db.DropTable(&models.PoolStake{})
 		db.DropTable(&models.Group{})
+		db.DropTable(&models.ContractTransaction{})
+
 	}
 	if !db.HasTable(&models.AccountList{}) {
 		db.CreateTable(&models.AccountList{})
+	}
+	if !db.HasTable(&models.ContractTransaction{}) {
+		db.CreateTable(&models.ContractTransaction{})
+	}
+	if !db.HasTable(&models.ContractCallTransaction{}) {
+		db.CreateTable(&models.ContractCallTransaction{})
 	}
 	if !db.HasTable(&models.Sys{}) {
 		db.CreateTable(&models.Sys{})
@@ -112,7 +124,24 @@ func (storage *Storage) Init(reset bool, resetcrontab bool) {
 	if !db.HasTable(&models.RecentMineBlock{}) {
 		db.CreateTable(&models.RecentMineBlock{})
 	}
-
+	if !db.HasTable(&models.Log{}) {
+		db.CreateTable(&models.Log{})
+	}
+	if !db.HasTable(&models.StakeMapping{}) {
+		db.CreateTable(&models.StakeMapping{})
+	}
+	if !db.HasTable(&models.Config{}) {
+		db.CreateTable(&models.Config{})
+	}
+	if !db.HasTable(&models.TokenContract{}) {
+		db.CreateTable(&models.TokenContract{})
+	}
+	if !db.HasTable(&models.TokenContractUser{}) {
+		db.CreateTable(&models.TokenContractUser{})
+	}
+	if !db.HasTable(&models.TokenContractTransaction{}) {
+		db.CreateTable(&models.TokenContractTransaction{})
+	}
 }
 
 func (storage *Storage) GetDB() *gorm.DB {
