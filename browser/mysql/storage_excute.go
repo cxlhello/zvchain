@@ -689,7 +689,7 @@ func (storage *Storage) AddTokenContract(tran *models.Transaction, log *models.L
 	fmt.Println("AddTokenContract", log)
 
 	tokenContracts := make([]*models.TokenContract, 0)
-	storage.db.Model(models.TokenContract{}).Where("contract_addr = ?", tran.ContractAddress).Find(&tokenContracts)
+	storage.db.Model(models.TokenContract{}).Where("contract_addr = ?", log.Address).Find(&tokenContracts)
 	if log != nil {
 		source := gjson.Get(log.Data, "args.0").String()
 		target := gjson.Get(log.Data, "args.1").String()
@@ -701,9 +701,9 @@ func (storage *Storage) AddTokenContract(tran *models.Transaction, log *models.L
 		realValue := &big.Int{}
 		realValue.SetString(value, 10)
 		if len(tokenContracts) == 0 {
-			fmt.Println("IsTokenContract", source, target, tran.ContractAddress)
+			fmt.Println("IsTokenContract", source, target, log.Address)
 
-			if !common.IsTokenContract(common2.StringToAddress(tran.ContractAddress)) {
+			if !common.IsTokenContract(common2.StringToAddress(log.Address)) {
 				return
 			}
 			fmt.Println("IsTokenContract,", tran)
@@ -720,7 +720,7 @@ func (storage *Storage) AddTokenContract(tran *models.Transaction, log *models.L
 			//mapInterface := make(map[string]interface{})
 			keyMap := []string{"name", "symbol", "decimal"}
 			for times, key := range keyMap {
-				data := db.GetData(common2.StringToAddress(tran.ContractAddress), []byte(key))
+				data := db.GetData(common2.StringToAddress(log.Address), []byte(key))
 				if v, ok := tvm.VmDataConvert(data).(string); ok {
 					switch times {
 					case 0:
@@ -736,7 +736,7 @@ func (storage *Storage) AddTokenContract(tran *models.Transaction, log *models.L
 					}
 				}
 			}
-			tokenContract.ContractAddr = tran.ContractAddress
+			tokenContract.ContractAddr = log.Address
 			if util.ValidateAddress(source) && util.ValidateAddress(target) {
 				if source == target {
 					tokenContract.HolderNum = 1
@@ -746,21 +746,21 @@ func (storage *Storage) AddTokenContract(tran *models.Transaction, log *models.L
 			}
 
 			src := ""
-			storage.db.Model(models.Transaction{}).Select("source").Where("contract_address = ?", common2.StringToAddress(tran.ContractAddress)).Row().Scan(&src)
+			storage.db.Model(models.Transaction{}).Select("source").Where("contract_address = ?", common2.StringToAddress(log.Address)).Row().Scan(&src)
 			tokenContract.Creator = src
 			tokenContract.TransferTimes = 1
 			storage.db.Create(&tokenContract)
 
 		} else { //update
-			storage.db.Model(models.TokenContract{}).Where("contract_addr = ?", tran.ContractAddress).UpdateColumn("transfer_times", gorm.Expr("transfer_times + ?"), 1)
+			storage.db.Model(models.TokenContract{}).Where("contract_addr = ?", log.Address).UpdateColumn("transfer_times", gorm.Expr("transfer_times + ?"), 1)
 			users := make([]*models.TokenContractUser, 0)
 			storage.db.Model(models.TokenContractUser{}).Where("address = ?", target).Find(&users)
 			if len(users) == 0 {
-				storage.db.Model(models.TokenContract{}).Where("contract_addr = ?", tran.ContractAddress).UpdateColumn("holder_num", gorm.Expr("holder_num + ?"), 1)
+				storage.db.Model(models.TokenContract{}).Where("contract_addr = ?", log.Address).UpdateColumn("holder_num", gorm.Expr("holder_num + ?"), 1)
 			}
 		}
 		contract := &models.TokenContractTransaction{
-			ContractAddr: "",
+			ContractAddr: log.Address,
 			Source:       source,
 			Target:       target,
 			Value:        realValue.String(),
