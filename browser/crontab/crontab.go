@@ -16,7 +16,9 @@ import (
 	"github.com/zvchain/zvchain/middleware/notify"
 	"github.com/zvchain/zvchain/middleware/types"
 	"github.com/zvchain/zvchain/tvm"
+	"math/big"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -534,6 +536,27 @@ func (crontab *Crontab) ConsumeContractTransfer() {
 				Status:       0,
 			}
 			mysql.DBStorage.AddContractCallTransaction(contractCall)
+		}
+	}
+}
+
+func (crontab *Crontab) ConsumeTokenContractTransfer() {
+	var ok = true
+	for ok {
+		select {
+		case data := <-tvm.TokenTransferData:
+			time.Sleep(time.Second)
+			var valuestring string
+			if value, ok := data.Value.(int64); ok {
+				valuestring = big.NewInt(value).String()
+			} else if value, ok := data.Value.(*big.Int); ok {
+				valuestring = value.String()
+			}
+			strings.Replace(string(data.Addr), "balanceOf@", "", -1)
+			crontab.storage.Updatetokenuser(data.ContractAddr,
+				string(data.Addr),
+				valuestring)
+
 		}
 	}
 }
