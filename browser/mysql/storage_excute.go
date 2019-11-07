@@ -608,6 +608,31 @@ func (storage *Storage) AddContractTransaction(contract *models.ContractTransact
 	storage.db.Create(&contract)
 	return true
 }
+
+func (storage *Storage) Updatetokenuser(contract string, addr string, value string) {
+	token := make([]models.TokenContract, 0, 0)
+	storage.db.Where("contract_addr = ?", contract).Find(&token)
+	if len(token) < 1 {
+		return
+	}
+
+	users := make([]models.TokenContractUser, 0, 0)
+	storage.db.Where("address =? and contract_addr = ?", addr, contract).Find(&users)
+	if len(users) > 0 {
+		value := getUseValue(contract, addr)
+		storage.db.Model(&models.TokenContractUser{}).
+			Where("contract_addr = ? and address = ? ", contract, addr).
+			Update("value", value)
+	} else {
+		user := &models.TokenContractUser{
+			ContractAddr: contract,
+			Address:      addr,
+			Value:        value,
+		}
+		storage.db.Create(&user)
+	}
+
+}
 func (storage *Storage) AddContractCallTransaction(contract *models.ContractCallTransaction) bool {
 	if storage.db == nil {
 		fmt.Println("[Storage] storage.db == nil")
