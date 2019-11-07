@@ -746,7 +746,7 @@ func (storage *Storage) AddTokenContract(tran *models.Transaction, log *models.L
 			}
 
 			src := ""
-			storage.db.Model(models.Transaction{}).Select("source").Where("contract_address = ? ", common2.StringToAddress(tran.Target)).Row().Scan(&src)
+			storage.db.Model(models.Transaction{}).Select("source").Where("contract_address = ? ", tran.Target).Row().Scan(&src)
 			tokenContract.Creator = src
 			tokenContract.TransferTimes = 1
 			storage.db.Create(&tokenContract)
@@ -808,7 +808,7 @@ func getUseValue(tokenaddr string, useraddr string) string {
 	key := fmt.Sprintf("balanceOf@%s", useraddr)
 	resultData, _ := common.QueryAccountData(tokenaddr, key, 0)
 	result := resultData.(map[string]interface{})
-	value := big.NewInt(result["value"].(int64))
+	value := result["value"].(*big.Int)
 	return value.String()
 }
 
