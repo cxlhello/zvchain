@@ -809,7 +809,9 @@ func getUseValue(tokenaddr string, useraddr string) string {
 	resultData, _ := common.QueryAccountData(tokenaddr, key, 0)
 	result := resultData.(map[string]interface{})
 	if result["value"] != nil {
-		if value, ok := result["value"].(*big.Int); ok {
+		if value, ok := result["value"].(int64); ok {
+			return big.NewInt(value).String()
+		} else if value, ok := result["value"].(*big.Int); ok {
 			return value.String()
 		}
 	}
