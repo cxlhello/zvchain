@@ -808,8 +808,12 @@ func getUseValue(tokenaddr string, useraddr string) string {
 	key := fmt.Sprintf("balanceOf@%s", useraddr)
 	resultData, _ := common.QueryAccountData(tokenaddr, key, 0)
 	result := resultData.(map[string]interface{})
-	value := result["value"].(*big.Int)
-	return value.String()
+	if result["value"] != nil {
+		if value, ok := result["value"].(*big.Int); ok {
+			return value.String()
+		}
+	}
+	return big.NewInt(0).String()
 }
 
 /*
