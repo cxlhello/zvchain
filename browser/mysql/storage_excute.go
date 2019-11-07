@@ -746,7 +746,7 @@ func (storage *Storage) AddTokenContract(tran *models.Transaction, log *models.L
 			}
 
 			src := ""
-			storage.db.Model(models.Transaction{}).Select("source").Where("contract_address = ?", common2.StringToAddress(log.Address)).Row().Scan(&src)
+			storage.db.Model(models.Transaction{}).Select("source").Where("contract_address = ? ", common2.StringToAddress(tran.Target)).Row().Scan(&src)
 			tokenContract.Creator = src
 			tokenContract.TransferTimes = 1
 			storage.db.Create(&tokenContract)
